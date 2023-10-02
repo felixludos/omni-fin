@@ -2,6 +2,8 @@ import sqlite3
 
 
 
+import sqlite3
+
 def init_db(conn: sqlite3.Connection):
     """Initialize the database with tables."""
     c = conn.cursor()
@@ -89,7 +91,6 @@ def init_db(conn: sqlite3.Connection):
         account INTEGER NOT NULL,
         balance REAL NOT NULL,
         unit INTEGER NOT NULL,
-        description TEXT,
         report INTEGER NOT NULL,
         FOREIGN KEY (account) REFERENCES accounts(id),
         FOREIGN KEY (unit) REFERENCES assets(id),
@@ -142,7 +143,7 @@ def init_db(conn: sqlite3.Connection):
         PRIMARY KEY(statement1, statement2)
     );
     """)
-    
+
     conn.commit()
 
 
