@@ -2,8 +2,6 @@ import sqlite3
 
 
 
-import sqlite3
-
 def init_db(conn: sqlite3.Connection):
     """Initialize the database with tables."""
     c = conn.cursor()
@@ -91,6 +89,7 @@ def init_db(conn: sqlite3.Connection):
         account INTEGER NOT NULL,
         balance REAL NOT NULL,
         unit INTEGER NOT NULL,
+        description TEXT,
         report INTEGER NOT NULL,
         FOREIGN KEY (account) REFERENCES accounts(id),
         FOREIGN KEY (unit) REFERENCES assets(id),
@@ -120,8 +119,7 @@ def init_db(conn: sqlite3.Connection):
     CREATE INDEX IF NOT EXISTS idx_transactions_dateof ON transactions(dateof);
     """)
     c.execute("""
-    CREATE TABLE IF NOT EXISTS links (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CREATE TABLE IF NOT EXISTS transaction_links (
         transaction1 INTEGER NOT NULL,
         transaction2 INTEGER NOT NULL,
         link_type TEXT,
@@ -129,9 +127,22 @@ def init_db(conn: sqlite3.Connection):
         FOREIGN KEY (transaction1) REFERENCES transactions(id),
         FOREIGN KEY (transaction2) REFERENCES transactions(id),
         FOREIGN KEY (report) REFERENCES reports(id),
-        UNIQUE(transaction1, transaction2)
+        PRIMARY KEY(transaction1, transaction2)
     );
     """)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS statement_links (
+        statement1 INTEGER NOT NULL,
+        statement2 INTEGER NOT NULL,
+        link_type TEXT,
+        report INTEGER NOT NULL,
+        FOREIGN KEY (statement1) REFERENCES statements(id),
+        FOREIGN KEY (statement2) REFERENCES statements(id),
+        FOREIGN KEY (report) REFERENCES reports(id),
+        PRIMARY KEY(statement1, statement2)
+    );
+    """)
+
     conn.commit()
 
 
