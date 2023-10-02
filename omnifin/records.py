@@ -231,5 +231,3 @@ class Linked(Fillable):
 		if existing is None:
 			raise NotImplementedError(f"No links found for {self}.")
 		self._links.extend([link for link in links if link not in existing])
-
-
