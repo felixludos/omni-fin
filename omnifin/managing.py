@@ -1,13 +1,26 @@
 import sqlite3
 from datetime import datetime
+from .building import init_db
+from .datcls import init_loading, Record, Report, Account, Asset, Tag, Statement, Transaction, Tagged, Linked
 from .misc import load_db
+
+
+
+class ReportNotSetError(ValueError):
+	pass
+
 
 
 class FinanceManager:
 	def __init__(self, db_path=None):
 		self.conn = load_db(db_path)
 		self.cursor = self.conn.cursor()
-		self.current_report_id = None
+		self.table_info = {}
+		self.current_report = None
+
+	def initialize(self):
+		init_db(self.conn)
+		init_loading(self.conn)
 
 	def _execute(self, query, params=()):
 		self.cursor.execute(query, params)
@@ -17,27 +30,12 @@ class FinanceManager:
 		self.conn.close()
 
 	def get_table_properties(self, table_name):
-		query = f"PRAGMA table_info({table_name})"
-		self._execute(query)
-		columns = self.cursor.fetchall()
-		return columns
-
-	# def get_account_info(self, account_name):
-
-
-	def get_report_info(self, report_id):
-		query = 'SELECT * FROM reports WHERE id = ?'
-		self.cursor.execute(query, (report_id,))
-		rid, date, cat, acc, desc, created = self.cursor.fetchone()
-
-
-		return {
-			'date': datetime.strptime(date, '%Y-%m-%d').date(),
-			'category': cat,
-			'associated_account': acc,
-			'description': desc,
-			'created_at': datetime.strptime(created, '%Y-%m-%d %H:%M:%S.%f'),
-		}
+		if table_name not in self.table_info:
+			query = f"PRAGMA table_info({table_name})"
+			self._execute(query)
+			columns = self.cursor.fetchall()
+			self.table_info[table_name] = columns
+		return self.table_info[table_name]
 
 	def generic_find(self, table, **props):
 		query = f'SELECT * FROM {table} WHERE '
@@ -45,40 +43,107 @@ class FinanceManager:
 		self.cursor.execute(query, tuple(props.values()))
 		return self.cursor.fetchall()
 
-	def resolve_account(self, identifier):
-		query = 'SELECT id FROM accounts WHERE account_name = ?'
-		self.cursor.execute(query, (account_name,))
-		return self.cursor.fetchone()
+	def _format_raw_row(self, raw):
+		return [val.primary_key if isinstance(val, Record) else val for val in raw]
 
-	def create_report(self, date, category, description=None, associated_account=None):
-		if isinstance(date, datetime):
-			date = date.strftime('%Y-%m-%d')
-		query = '''
-            INSERT INTO reports (dateof, category, associated_account, description, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        '''
-		self._execute(query, (date, category, associated_account, description, datetime.now()))
+
+	def _write_record(self, table, data, cols=None):
+		vals = self._format_raw_row(data)
+		if cols is None:
+			cols = [name for (idx, name, is_req, default, is_key) in self.get_table_properties(table)]
+			if 'id' in cols:
+				cols.remove('id')
+		assert len(vals) == len(cols), f'Expected {len(cols)} values, got {len(vals)}'
+		query = f'''INSERT INTO {table} ({", ".join(col for col in cols)}) VALUES ({", ".join("?" for _ in cols)})'''
+		self._execute(query, vals)
 		return self.cursor.lastrowid
+		return report.set_ID()
 
-	def add_account(self, name, account_type, category, description=None, report_id=None):
-		if report_id is None:
-			report_id = self.create_report(date=datetime.now().date(), category="Account Creation")
 
-		query = '''
-            INSERT INTO accounts (account_name, account_type, category, description, report)
-            VALUES (?, ?, ?, ?, ?)
-        '''
-		self._execute(query, (name, account_type, category, description, report_id))
+	def write_report(self, report: Report):
+		assert not report.exists(), f'Report {report} already exists'
+		row = report.export_row()
+		ID = self._write_record('reports', row, cols=['category', 'associated_account', 'description'])
+		return report.set_ID(ID)
 
-	def remove_account(self, name):
-		query = 'DELETE FROM accounts WHERE account_name = ?'
-		self._execute(query, (name,))
 
-	# Add similar methods for other tables like assets, transactions, etc.
+	def create_report(self, category: str = 'manual', account: Account | None = None, description: str = None):
+		rep = Report(category=category, account=account, description=description)
+		return self.write_report(rep)
+
+
+	def create_current(self, category: str = 'manual', account: Account | None = None, description: str = None, *,
+					   overwrite: bool = False):
+		if self.current_report is None or overwrite:
+			self.current_report = self.create_report(category, account, description)
+		elif category != self.current_report.category \
+			or account != self.current_report.account \
+			or description != self.current_report.description:
+			raise ValueError(f'Current report already exists: {self.current_report}')
+		return self.current_report
+
+
+	def write(self, record: Record):
+		assert not isinstance(record, Report), f'Use write_report to write reports'
+		assert not record.exists(), f'Record {record} already exists'
+		if self.current_report is None:
+			raise ReportNotSetError
+		table = record.table_name
+		row = record.export_row(self.current_report)
+		ID = self._write_record(table, row)
+		return record.set_ID(ID)
+
 
 	def get_accounts(self):
-		self.cursor.execute('SELECT * FROM accounts')
-		return self.cursor.fetchall()
+		yield from Account().fill()
 
-# Add similar methods to retrieve data from other tables.
+
+	def get_assets(self):
+		yield from Asset().fill()
+
+
+	def add_tags(self, record: Tagged, *tags: Tag):
+		assert record.exists(), f'Record {record} does not exist: {record}'
+		if self.current_report is None:
+			raise ReportNotSetError
+		existing = set(record.tags())
+		new = [tag for tag in tags if tag not in existing]
+		if not len(new):
+			return
+		assert all(tag.exists() for tag in new), f'Not all tags exist: {[tag for tag in new if not tag.exists()]}'
+		table = record.tags_table_name
+
+		for tag in new:
+			query = f'INSERT INTO {table} (id, tag_id, report) VALUES (?, ?, ?)'
+			self.cursor.execute(query, (tag.primary_key, record.primary_key, self.current_report.primary_key))
+		self.conn.commit()
+		record.update_tags(new)
+		return record
+
+
+	def add_links(self, record: Linked, *links: Linked):
+		assert record.exists(), f'Record {record} does not exist: {record}'
+		if self.current_report is None:
+			raise ReportNotSetError
+		existing = set(record.links())
+		new = [link for link in links if link not in existing]
+		if not len(new):
+			return
+		assert all(link.exists() for link in new), f'Not all links exist: {[link for link in new if not link.exists()]}'
+		table = record.links_table_name
+
+		for link in new:
+			query = f'INSERT INTO {table} (id1, id2, report) VALUES (?, ?, ?)'
+			self.cursor.execute(query, (min(record.primary_key, link.primary_key),
+										max(record.primary_key, link.primary_key),
+										self.current_report.primary_key))
+		self.conn.commit()
+		record.update_links(new)
+		return record
+
+
+	def link_all(self, *records: Record):
+		for i in range(len(records)-1):
+			self.add_links(records[i], *records[i+1:])
+
 
