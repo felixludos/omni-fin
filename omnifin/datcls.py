@@ -1,183 +1,180 @@
+from typing import Optional, Union, Type, TypeVar, Any, Callable, Iterable, Mapping, Sequence, Tuple, List, Dict
 import sqlite3
-from datetime import datetime, date as datelike
-from dateutil import parser
-from dataclasses import dataclass
+from .records import datelike, Record, Fillable, Tagged, Linked
 
 
 
-# class SimpleRecord:
-# 	_table_name = None
-# 	@classmethod
-# 	def from_id(cls, cursor: sqlite3.Cursor, ID: int):
-# 		table = cls._table_name
-# 		if table is None:
-# 			raise NotImplementedError("Table name not set.")
-#
-# 		cursor.execute(f'SELECT * FROM {table} WHERE id = ?', (ID,))
-# 		return cls(*cursor.fetchone())
+# adds functions to read records
+def init_loading(conn: sqlite3.Connection):
+	def load_record(record: Record, table_name: str, primary_key: int) -> tuple:
+		c = conn.cursor()
+		c.execute(f'SELECT * FROM {table_name} WHERE id = ?', (primary_key,))
+		return c.fetchone()
+	Record._load_fn = load_record
+
+	def load_tags(record: Record, table_name: str, primary_key: int) -> list['Tag']:
+		c = conn.cursor()
+		c.execute(f'SELECT tag_id FROM {table_name} WHERE transaction_id = ?', (primary_key,))
+		return [Tag.from_key(tag_id) for tag_id, in c.fetchall()]
+	Tagged._load_tags = load_tags
+
+	def load_links(record: Record, table_name: str, primary_key: int) -> tuple:
+		c = conn.cursor()
+		c.execute(f'SELECT id1 FROM {table_name} WHERE id2 = ?', (primary_key,))
+		links1 = [Transaction.from_key(edge) for edge, in c.fetchall()]
+		c.execute(f'SELECT id2 FROM {table_name} WHERE id1 = ?', (primary_key,))
+		links2 = [Transaction.from_key(edge) for edge, in c.fetchall()]
+		return [*links1, *links2]
+	Linked._load_links = load_links
+
+	def find_rows(table_name: str, props) -> list[tuple]:
+		c = conn.cursor()
+		query = f'SELECT * FROM {table_name}'
+		if len(props) > 0:
+			query += ' WHERE '
+			query += ' AND '.join(f'{k} = ?' for k in props)
+		c.execute(query, tuple(props.values()))
+		return c.fetchall()
+	Fillable._fill_fn = find_rows
 
 
 
-class Lazy:
-	_loader_fn = None
-
-	def __init__(self, *, _lazy_id=None, **kwargs):
-		super().__init__(**kwargs)
-		self._lazy_id = _lazy_id
-
-	@classmethod
-	def from_id(cls, ID: int):
-		return cls(_lazy_id=ID)
-
-	def _load(self):
-		if self._loader_fn is None:
-			raise NotImplementedError("Loader function not set.")
-		raw: tuple = self._loader_fn(self._lazy_id)
-		self.__dict__.update({k: v for k, v in zip(self.__annotations__, raw)})
-		self._lazy_id = None
-
-	def __getattr__(self, item):
-		if item not in self.__getattribute__('__dict__') and item in self.__getattribute__('__annotations__'):
-			self._load()
-		return self.__getattribute__(item)
-
-	def __loaded_str__(self):
-		return super().__str__()
-
-	def __loaded_repr__(self):
-		return super().__repr__()
-
-	def __str__(self):
-		return self.__loaded_str__() if self._lazy_id is None else f'{self.__class__.__name__}({self._lazy_id})'
-
-	def __repr__(self):
-		return self.__loaded_repr__() if self._lazy_id is None else f'{self.__class__.__name__}({self._lazy_id})'
-
-
-
-class Record:
-	def __post_init__(self):
-		for key, typ in self.__annotations__.items():
-			if issubclass(typ, datelike):
-				val = getattr(self, key)
-				if isinstance(val, str):
-					val = parser.parse(val)#.date()
-					setattr(self, key, val)
-			if issubclass(typ, Lazy):
-				val = getattr(self, key)
-				if isinstance(val, int):
-					val = typ.from_id(val)
-					setattr(self, key, val)
-
-
-
-@dataclass
-class Report(Lazy, Record):
-	ID: int
-	date: datelike
+class Report(Fillable, table='reports'):
+	ID: int = None
 	category: str
-	account: 'Account'
-	description: str
+	account: 'Account' = None
+	description: str = None
 	created: datelike
 
 	def __loaded_str__(self):
-		return f'{self.category}[{self.date.strftime("%Y-%m-%d")}]'
+		return f'{self.category}[{self.created.strftime("%y-%m-%d %H:%M:%S")}]'
 
 	def __loaded_repr__(self):
-		return f'{self.__class__.__name__}({self.category}, {self.date.strftime("%Y-%m-%d")})'
+		return f'{self.__class__.__name__}({self.category}, {self.created.strftime("%y-%m-%d %H:%M:%S")})'
+
+	def export_row(self):
+		return [self.category, self.account, self.description]
 
 
 
-@dataclass
-class Asset(Lazy, Record):
-	ID: int
+class Asset(Fillable, table='assets'):
+	ID: int = None
 	name: str
 	category: str
-	description: str
+	description: str = None
 	report: Report
 
 	def __loaded_str__(self):
 		return self.name
 
 	def __loaded_repr__(self):
-		return f'{self.category}:{self.name}'
+		return f'<{self.category}:{self.name}>'
+
+	def shortcuts(self):
+		yield self.name
+		yield f'{self.category}:{self.name}'
 
 
 
-@dataclass
-class Account(Lazy, Record):
-	ID: int
+class Tag(Fillable, table='tags'):
+	ID: int = None
 	name: str
-	account_type: str
-	category: str
-	description: str
+	category: str = None
+	description: str = None
 	report: Report
+
+	def __loaded_str__(self):
+		return f'<TAG:{self.name}>'
+
+	def __loaded_repr__(self):
+		return f'<TAG:{self.name}>'
+
+	def shortcuts(self):
+		yield self.name
+		yield f'<{self.name}>'
+		yield f'TAG:{self.name}'
+
+
+
+class Account(Tagged, table='accounts'):
+	ID: int = None
+	name: str
+	category: str
+	owner: str
+	description: str = None
+	report: Report
+
+	@property
+	def tags_table_name(self):
+		return 'account_tags'
 
 	def __loaded_str__(self):
 		return self.name
 
 	def __loaded_repr__(self):
 		if self.category is None:
-			return self.name
-		return f'{self.category}:{self.name}'
+			return f'<{self.name}>'
+		return f'<{self.category}:{self.name}>'
+
+	def shortcuts(self):
+		yield self.name
+		yield f'{self.category}:{self.name}'
 
 
 
-@dataclass
-class Tag(Lazy, Record):
-	ID: int
-	name: str
-	description: str
-	report: Report
-
-	def __loaded_str__(self):
-		return f'<{self.name}>'
-
-	def __loaded_repr__(self):
-		return f'<{self.name}>'
-
-
-
-@dataclass
-class Statement(Lazy, Record):
-	ID: int
+class Statement(Tagged, Linked, table='statements'):
+	ID: int = None
 	date: datelike
 	account: Account
 	balance: float
 	unit: Asset
-	description: str
+	description: str = None
 	report: Report
+
+	@property
+	def tags_table_name(self):
+		return 'statement_tags'
+	@property
+	def links_table_name(self):
+		return 'statement_links'
 
 	def __loaded_str__(self):
-		return f'{self.balance} {self.unit} ({self.account})'
+		return f'{self.account}[{self.date.strftime("%y-%m-%d")}] {self.balance} {self.unit}'
 
 	def __loaded_repr__(self):
-		return (f'{self.__class__.__name__}({self.balance} {self.unit}, '
-				f'{self.account}, {self.date.strftime("%Y-%m-%d")}))')
+		return f'<{self.account}, {self.balance} {self.unit}, {self.date.strftime("%y-%m-%d")}>'
 
 
-@dataclass
-class Transaction(Lazy, Record):
-	ID: int
+
+class Transaction(Tagged, Linked, table='transactions'):
+	ID: int = None
 	date: datelike
-	description: str
+	sender: Account
 	amount: float
 	unit: Asset
-	sender: Account
 	receiver: Account
-	received_amount: float
-	received_unit: Asset
+	received_amount: float = None
+	received_unit: Asset = None
+	description: str = None
 	report: Report
+
+	@property
+	def tags_table_name(self):
+		return 'transaction_tags'
+	@property
+	def links_table_name(self):
+		return 'transaction_links'
 
 	def __loaded_str__(self):
 		if self.received_amount is None:
-			return f'{self.amount} {self.unit} ({self.sender} -> {self.receiver})'
-		return (f'{self.amount} {self.unit} ({self.sender}) '
-				f'-> {self.received_amount} {self.received_unit} ({self.receiver})')
+			return f'{self.sender} {self.amount} {self.unit} -> {self.receiver}'
+		return f'{self.sender} {self.amount} {self.unit} -> {self.receiver} {self.received_amount} {self.received_unit}'
 
 	def __loaded_repr__(self):
-		return (f'{self.__class__.__name__}({self.amount} {self.unit} ({self.sender}), '
-				f'{self.received_amount} {self.received_unit} ({self.receiver}), '
-				f'{self.date.strftime("%Y-%m-%d")}))')
+		if self.received_amount is None:
+			return f'<{self.sender} -> {self.receiver}, {self.amount} {self.unit}, {self.date.strftime("%y-%m-%d")}>'
+		return (f'<{self.sender} -> {self.receiver}, '
+				f'{self.amount} {self.unit} -> {self.received_amount} {self.received_unit}, '
+				f'{self.date.strftime("%y-%m-%d")}>')
 
 
