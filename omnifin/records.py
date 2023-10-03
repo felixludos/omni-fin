@@ -2,10 +2,33 @@ from typing import Optional, Union, Type, TypeVar, Any, Callable, Iterable, Mapp
 import sqlite3
 from datetime import datetime, date as datelike
 from dateutil import parser
+import omnifig as fig
 
 
 
 _known_record_types = {}
+
+
+
+class Figged(fig.Configurable):
+	@classmethod
+	def init_from_config(cls, config: fig.Configuration,
+						 args: Optional[Tuple] = None, kwargs: Optional[Dict[str, Any]] = None, *,
+						 silent: Optional[bool] = None) -> Any:
+		if kwargs is None:
+			kwargs = {}
+
+		if 'primary_key' not in kwargs:
+			kwargs['primary_key'] = config.pull('primary_key', None, silent=silent)
+
+		for key in cls.__annotations__:
+			if key in kwargs:
+				continue
+			if key in config:
+				kwargs[key] = config.pull(key, getattr(cls, key), silent=silent) if hasattr(cls, key) \
+					else config.pull(key, silent=silent)
+
+		return super().init_from_config(config, args=args, kwargs=kwargs, silent=silent)
 
 
 
@@ -137,10 +160,10 @@ class Record:
 		else:
 			if self._load_fn is None:
 				raise NotImplementedError("Loader function not set.")
-			if self._table_name is None:
+			if self.table_name is None:
 				raise NotImplementedError(f"Table name for {self.__class__.__name__} not set.")
 			if raw is None:
-				raw = self._load_fn(self._table_name, self._primary_key)
+				raw = self._load_fn(self.table_name, self._primary_key)
 			self._populate_info(self._from_raw(raw))
 			self._loaded = True
 		return self
@@ -178,9 +201,9 @@ class Fillable(Record):
 	def fill(self):
 		if self._fill_fn is None:
 			raise NotImplementedError("Filler function not set.")
-		if self._table_name is None:
+		if self.table_name is None:
 			raise NotImplementedError(f"Table name {self.__class__.__name__} not set.")
-		for raw in self._fill_fn(self._table_name, self.as_dict()):
+		for raw in self._fill_fn(self.table_name, self.as_dict()):
 			yield self.from_raw(raw)
 
 
