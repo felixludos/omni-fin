@@ -40,7 +40,7 @@ def create_db(cfg: fig.Configuration):
 		entries = load_yaml(assets)
 		new = [Asset(**info) for info in entries
 			   if (info.get('name'), info.get('category')) not in existing]
-		print(f'Adding {len(new)}/{len(entries)} missing assets{} from {assets}.')
+		print(f'Adding {len(new)}/{len(entries)} missing assets from {assets}.')
 		todo.extend(new)
 
 	if accounts is not None:
@@ -64,6 +64,7 @@ def create_db(cfg: fig.Configuration):
 
 		m.write_all(todo)
 
+	print(f'Created database file {m.path} and populated with {len(todo)} records.')
 
 
 
