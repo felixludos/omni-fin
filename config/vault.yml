@@ -1,0 +1,13 @@
+
+root: db\vault
+
+path: omnifin.db
+
+accounts: accounts.yml
+assets: assets.yml
+
+# to create a symbolic link in windows powershell of a directory:
+# cmd /c mklink /D "C:\Users\user\Documents\GitHub\omnifin\config\dl" "C:\Users\user\Documents\GitHub\omnifin\dl"
+
+
+

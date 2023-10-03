@@ -1,0 +1,8 @@
+
+root: db/
+
+path: omnifin.db
+
+accounts: accounts.yml
+assets: assets.yml
+

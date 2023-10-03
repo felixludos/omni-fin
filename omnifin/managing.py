@@ -1,4 +1,7 @@
+from typing import Optional, Union, Type, TypeVar, Any, Callable, Iterable, Mapping, Sequence, Tuple, List, Dict
 import sqlite3
+import omnifig as fig
+from pathlib import Path
 from datetime import datetime
 from .building import init_db
 from .datcls import init_loading, Record, Report, Account, Asset, Tag, Statement, Transaction, Tagged, Linked
@@ -10,10 +13,17 @@ class ReportNotSetError(ValueError):
 	pass
 
 
-
-class FinanceManager:
-	def __init__(self, db_path=None):
-		self.conn = load_db(db_path)
+@fig.component('manager')
+class FinanceManager(fig.Configurable):
+	def __init__(self, path=None, root=None):
+		if path is not None:
+			path = Path(path)
+		if root is not None:
+			root = Path(root)
+		if path is not None and root is not None:
+			path = root / Path(path)
+		self.path = path
+		self.conn = load_db(path)
 		self.cursor = self.conn.cursor()
 		self.table_info = {}
 		self.current_report = None
@@ -22,9 +32,10 @@ class FinanceManager:
 		init_db(self.conn)
 		init_loading(self.conn)
 
-	def _execute(self, query, params=()):
+	def _execute(self, query, params=(), commit=True):
 		self.cursor.execute(query, params)
-		self.conn.commit()
+		if commit:
+			self.conn.commit()
 
 	def close(self):
 		self.conn.close()
@@ -47,17 +58,17 @@ class FinanceManager:
 		return [val.primary_key if isinstance(val, Record) else val for val in raw]
 
 
-	def _write_record(self, table, data, cols=None):
+	def _write_record(self, table, data, cols=None, *, commit=True):
 		vals = self._format_raw_row(data)
 		if cols is None:
-			cols = [name for (idx, name, is_req, default, is_key) in self.get_table_properties(table)]
+			info = self.get_table_properties(table)
+			cols = [name for (idx, name, typ, is_req, default, is_key) in info]
 			if 'id' in cols:
 				cols.remove('id')
 		assert len(vals) == len(cols), f'Expected {len(cols)} values, got {len(vals)}'
 		query = f'''INSERT INTO {table} ({", ".join(col for col in cols)}) VALUES ({", ".join("?" for _ in cols)})'''
-		self._execute(query, vals)
+		self._execute(query, vals, commit=commit)
 		return self.cursor.lastrowid
-		return report.set_ID()
 
 
 	def write_report(self, report: Report):
@@ -83,15 +94,20 @@ class FinanceManager:
 		return self.current_report
 
 
-	def write(self, record: Record):
+	def write(self, record: Record, commit=True):
 		assert not isinstance(record, Report), f'Use write_report to write reports'
 		assert not record.exists(), f'Record {record} already exists'
 		if self.current_report is None:
 			raise ReportNotSetError
 		table = record.table_name
 		row = record.export_row(self.current_report)
-		ID = self._write_record(table, row)
+		ID = self._write_record(table, row, commit=commit)
 		return record.set_ID(ID)
+
+	def write_all(self, records: Iterable[Record]):
+		for record in records:
+			self.write(record, commit=False)
+		self.conn.commit()
 
 
 	def get_accounts(self):

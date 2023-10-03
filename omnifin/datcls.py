@@ -1,7 +1,7 @@
 from typing import Optional, Union, Type, TypeVar, Any, Callable, Iterable, Mapping, Sequence, Tuple, List, Dict
 import sqlite3
-from .records import datelike, Record, Fillable, Tagged, Linked
-
+import omnifig as fig
+from .records import datelike, Figged, Record, Fillable, Tagged, Linked
 
 
 # adds functions to read records
@@ -27,9 +27,10 @@ def init_loading(conn: sqlite3.Connection):
 		return [*links1, *links2]
 	Linked._load_links = load_links
 
-	def find_rows(table_name: str, props) -> list[tuple]:
+	def find_rows(record: Record, table_name: str, props) -> list[tuple]:
 		c = conn.cursor()
 		query = f'SELECT * FROM {table_name}'
+		props = {k: v for k, v in props.items() if v is not None}
 		if len(props) > 0:
 			query += ' WHERE '
 			query += ' AND '.join(f'{k} = ?' for k in props)
@@ -39,7 +40,8 @@ def init_loading(conn: sqlite3.Connection):
 
 
 
-class Report(Fillable, table='reports'):
+@fig.component('report')
+class Report(Fillable, Figged, table='reports'):
 	ID: int = None
 	category: str
 	account: 'Account' = None
@@ -57,7 +59,8 @@ class Report(Fillable, table='reports'):
 
 
 
-class Asset(Fillable, table='assets'):
+@fig.component('asset')
+class Asset(Fillable, Figged, table='assets'):
 	ID: int = None
 	name: str
 	category: str
@@ -76,7 +79,8 @@ class Asset(Fillable, table='assets'):
 
 
 
-class Tag(Fillable, table='tags'):
+@fig.component('tag')
+class Tag(Fillable, Figged, table='tags'):
 	ID: int = None
 	name: str
 	category: str = None
@@ -96,7 +100,8 @@ class Tag(Fillable, table='tags'):
 
 
 
-class Account(Tagged, table='accounts'):
+@fig.component('account')
+class Account(Tagged, Figged, table='accounts'):
 	ID: int = None
 	name: str
 	category: str
@@ -122,7 +127,8 @@ class Account(Tagged, table='accounts'):
 
 
 
-class Statement(Tagged, Linked, table='statements'):
+@fig.component('statement')
+class Statement(Tagged, Linked, Figged, table='statements'):
 	ID: int = None
 	date: datelike
 	account: Account
@@ -146,7 +152,8 @@ class Statement(Tagged, Linked, table='statements'):
 
 
 
-class Transaction(Tagged, Linked, table='transactions'):
+@fig.component('transaction')
+class Transaction(Tagged, Linked, Figged, table='transactions'):
 	ID: int = None
 	date: datelike
 	sender: Account
