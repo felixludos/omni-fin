@@ -66,6 +66,7 @@ def init_db(conn: sqlite3.Connection):
     CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         dateof DATE NOT NULL,
+        location TEXT,
         sender INTEGER NOT NULL,
         amount REAL NOT NULL,
         unit INTEGER NOT NULL,
@@ -73,6 +74,7 @@ def init_db(conn: sqlite3.Connection):
         received_amount REAL,
         received_unit INTEGER,
         description TEXT,
+        reference TEXT,
         report INTEGER NOT NULL,
         FOREIGN KEY (unit) REFERENCES assets(id),
         FOREIGN KEY (received_unit) REFERENCES assets(id),

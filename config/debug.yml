@@ -6,15 +6,20 @@
 
 ########################################################################
 
-_meta.script_name: parse-csv
+#_meta.script_name: parse-csv
+#
+#parser._type: parser/usbank
+#
+#path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
+##out : extra/usbank-test.json
+#
+##overwrite: yes
 
-parser._type: parser/usbank
+########################################################################
 
-path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
+_meta.script_name: usbank-locs
 
-out: extra/usbank-test.json
-
-overwrite: yes
-
+path: extra/usbank-test.json
+loc-path: extra/usbank-sols.csv
 
 

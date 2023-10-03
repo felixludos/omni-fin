@@ -156,6 +156,7 @@ class Statement(Tagged, Linked, Figged, table='statements'):
 class Transaction(Tagged, Linked, Figged, table='transactions'):
 	ID: int = None
 	date: datelike
+	location: str = None
 	sender: Account
 	amount: float
 	unit: Asset
@@ -163,6 +164,7 @@ class Transaction(Tagged, Linked, Figged, table='transactions'):
 	received_amount: float = None
 	received_unit: Asset = None
 	description: str = None
+	reference: str = None
 	report: Report
 
 	@property
