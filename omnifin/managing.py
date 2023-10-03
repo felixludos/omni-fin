@@ -13,21 +13,23 @@ class ReportNotSetError(ValueError):
 	pass
 
 
+
 @fig.component('manager')
 class FinanceManager(fig.Configurable):
-	def __init__(self, path=None, root=None):
-		if path is not None:
-			path = Path(path)
+	def __init__(self, db=None, root=None):
+		if db is not None:
+			db = Path(db)
 		if root is not None:
 			root = Path(root)
-		if path is not None and root is not None:
-			path = root / Path(path)
-		self.path = path
-		self.conn = load_db(path)
+		if db is not None and root is not None:
+			db = root / Path(db)
+		self.path = db
+		self.conn = load_db(db)
 		self.cursor = self.conn.cursor()
 		self.table_info = {}
 		self.current_report = None
 		self.db_info = None
+		self.shortcuts = {}
 
 	def initialize(self):
 		init_db(self.conn)
@@ -41,6 +43,8 @@ class FinanceManager(fig.Configurable):
 		query = "SELECT name FROM sqlite_master WHERE type='table';"
 		self._execute(query)
 		for table, in self.cursor.fetchall():
+			if table in {'sqlite_sequence'}:
+				continue
 			size_query = f"SELECT COUNT(*) FROM {table}"
 			self._execute(size_query)
 			info[table] = self.cursor.fetchone()[0]
@@ -125,15 +129,27 @@ class FinanceManager(fig.Configurable):
 
 
 	def populate_shortcuts(self):
+		fails = []
+		for asset in self.get_assets():
+			for short in asset.shortcuts():
+				if short in self.shortcuts:
+					fails.append((short, asset))
+				else:
+					self.shortcuts[short.lower()] = asset
+
 		for acc in self.get_accounts():
+			for short in acc.shortcuts():
+				if short in self.shortcuts:
+					fails.append((short, acc))
+				else:
+					self.shortcuts[short.lower()] = acc
 
-			acc.populate_shortcuts()
+		return fails
 
-		pass
 
-	def parse(self, ident: str):
-
-		pass
+	def p(self, ident: str):
+		ident = ident.lower()
+		return self.shortcuts[ident]
 
 
 	def get_accounts(self):
@@ -187,5 +203,11 @@ class FinanceManager(fig.Configurable):
 	def link_all(self, *records: Record):
 		for i in range(len(records)-1):
 			self.add_links(records[i], *records[i+1:])
+
+
+	def past_reports(self, max_num=10):
+		query = f'SELECT * FROM reports ORDER BY created_at DESC LIMIT {max_num}'
+		self._execute(query)
+		return [Report.from_raw(row) for row in self.cursor.fetchall()]
 
 

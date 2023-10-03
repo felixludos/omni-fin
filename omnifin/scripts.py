@@ -64,7 +64,7 @@ def create_db(cfg: fig.Configuration):
 
 		m.write_all(todo)
 
-	print(f'Created database file {m.path} and populated with {len(todo)} records.')
+	print(f'Setup database file {m.path} and populated with {len(todo)} new records.')
 
 
 

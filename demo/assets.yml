@@ -1,0 +1,21 @@
+
+- {category: currency, name: USD, description: US Dollar}
+- {category: currency, name: EUR, description: Euro}
+- {category: currency, name: GBP, description: British Pound}
+- {category: currency, name: CHF, description: Swiss Franc}
+- {category: currency, name: JPY, description: Japanese Yen}
+- {category: currency, name: AUD, description: Australian Dollar}
+- {category: currency, name: CAD, description: Canadian Dollar}
+- {category: currency, name: CNY, description: Chinese Yuan}
+- {category: currency, name: SEK, description: Swedish Krona}
+- {category: currency, name: NZD, description: New Zealand Dollar}
+- {category: currency, name: MXN, description: Mexican Peso}
+- {category: currency, name: SGD, description: Singapore Dollar}
+- {category: currency, name: HKD, description: Hong Kong Dollar}
+- {category: currency, name: NOK, description: Norwegian Krone}
+- {category: currency, name: KRW, description: South Korean Won}
+- {category: currency, name: TRY, description: Turkish Lira}
+- {category: currency, name: RUB, description: Russian Ruble}
+- {category: currency, name: INR, description: Indian Rupee}
+- {category: currency, name: BRL, description: Brazilian Real}
+- {category: currency, name: ZAR, description: South African Rand}

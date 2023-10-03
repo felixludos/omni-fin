@@ -1,0 +1,8 @@
+
+
+root._type: repo-root
+
+db: demo/demo.db
+
+accounts: demo/accounts.yml
+assets: demo/assets.yml

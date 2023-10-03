@@ -1,0 +1,16 @@
+
+
+- {name: unknown, category: external, owner: external}
+- {name: merchant, category: expense, owner: external}
+- {name: employer, category: income, owner: external}
+
+- {name: cash, category: cash, owner: internal}
+
+- {name: credit-card, category: credit, owner: internal}
+- {name: checking, category: bank, owner: internal}
+- {name: savings, category: bank, owner: internal}
+- {name: investment, category: broker, owner: internal}
+- {name: paypal, category: fintech, owner: internal}
+
+
+

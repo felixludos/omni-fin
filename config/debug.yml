@@ -1,5 +1,20 @@
 
-_meta.script_name: init-db
-
+#_meta.script_name: init-db
+#
 #_base: [local]
-_base: [vault]
+##_base: [vault]
+
+########################################################################
+
+_meta.script_name: parse-csv
+
+parser._type: parser/usbank
+
+path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
+
+out: extra/usbank-test.json
+
+overwrite: yes
+
+
+

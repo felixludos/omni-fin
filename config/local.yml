@@ -1,8 +1,8 @@
 
-root: db/
+root._type: repo-root
 
-path: omnifin.db
+db: db/omnifin.db
 
-accounts: accounts.yml
-assets: assets.yml
+accounts: demo\accounts.yml
+assets: demo\assets.yml
 

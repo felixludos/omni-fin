@@ -4,3 +4,4 @@ from .datcls import init_loading, Record, Account, Asset, Report, Transaction, T
 from .building import init_db
 from .managing import FinanceManager
 from . import scripts
+from . import parsers
