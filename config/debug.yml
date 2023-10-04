@@ -8,18 +8,29 @@
 
 #_meta.script_name: parse-csv
 #
-#parser._type: parser/usbank
+#overwrite: yes
 #
-#path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
-##out : extra/usbank-test.json
+##parser._type: parser/usbank
+##path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
 #
-##overwrite: yes
+#parser._type: parser/costco
+#path: extra/Date range.CSV
+
 
 ########################################################################
 
-_meta.script_name: usbank-locs
+#_meta.script_name: usbank-locs
+#
+#path: extra/usbank-test.json
+#loc-path: extra/usbank-sols.csv
 
-path: extra/usbank-test.json
-loc-path: extra/usbank-sols.csv
+_meta.script_name: costco-locs
+
+path: extra/Date range.json
+loc-path: extra/Data range-sols.csv
+
+#overwrite: yes
+
+########################################################################
 
 
