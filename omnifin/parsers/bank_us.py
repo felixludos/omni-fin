@@ -365,4 +365,10 @@ def costco_locs(cfg: fig.Configuration):
 	return entries, failed
 
 
+@fig.script('submit/usbank')
+def submit_usbank_transactions(cfg: fig.Configuration):
+	raise NotImplementedError
+
+
+
 

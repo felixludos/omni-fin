@@ -83,6 +83,33 @@ def init_db(conn: sqlite3.Connection):
         FOREIGN KEY (report) REFERENCES reports(id)
     );
     """)
+    # verifications: any transaction between internal accounts should (in principle) be verified
+    # only the transaction from the sender account should be stored in the transactions table, while
+    # the transaction recorded by the receiving account should be put into the verifications table
+    # (to avoid double counting)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS verifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        txn INTEGER, 
+        dateof DATE,
+        location TEXT,
+        sender INTEGER,
+        amount REAL,
+        unit INTEGER,
+        receiver INTEGER,
+        received_amount REAL,
+        received_unit INTEGER,
+        description TEXT,
+        reference TEXT,
+        report INTEGER NOT NULL,
+        FOREIGN KEY (txn) REFERENCES transactions(id),
+        FOREIGN KEY (unit) REFERENCES assets(id),
+        FOREIGN KEY (received_unit) REFERENCES assets(id),
+        FOREIGN KEY (sender) REFERENCES accounts(id),
+        FOREIGN KEY (receiver) REFERENCES accounts(id),
+        FOREIGN KEY (report) REFERENCES reports(id)
+    );
+    """)
     c.execute("""
     CREATE INDEX IF NOT EXISTS idx_transactions_dateof ON transactions(dateof);
     """)
@@ -143,7 +170,30 @@ def init_db(conn: sqlite3.Connection):
         PRIMARY KEY(id, tag_id)
     );
     """)
-
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS transaction_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ref_id INTEGER NOT NULL,
+        property TEXT NOT NULL,
+        previous_value TEXT,
+        new_value TEXT,
+        description TEXT,
+        edited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        report INTEGER NOT NULL
+    );
+    """)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS statement_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ref_id INTEGER NOT NULL,
+        property TEXT NOT NULL,
+        previous_value TEXT,
+        new_value TEXT,
+        description TEXT,
+        edited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        report INTEGER NOT NULL
+    );
+    """)
     conn.commit()
 
 

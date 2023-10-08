@@ -2,9 +2,19 @@ from pathlib import Path
 from tqdm import tqdm
 from omnibelt import load_yaml, save_yaml
 import omnifig as fig
+from dateutil import parser
 
+from . import misc
 from .datcls import Account, Asset, Tag
+from .managing import FinanceManager
+from .identification import Identifier
 
+def get_manager(cfg: fig.Configuration) -> FinanceManager:
+	cfg.push('manager._type', 'manager', overwrite=False, silent=True)
+	m = cfg.pull('manager')
+
+	Identifier._manager = m
+	return m
 
 
 @fig.script('init-db')
@@ -14,11 +24,10 @@ def create_db(cfg: fig.Configuration):
 	if root is not None:
 		root = Path(root)
 
-	cfg.push('manager._type', 'manager', overwrite=False, silent=True)
-	m = cfg.pull('manager')
-
 	assets = cfg.pull('assets', None)
 	accounts = cfg.pull('accounts', None)
+
+	m = get_manager(cfg)
 
 	if m.path.exists():
 		print(f'Database file {m.path} already exists.')
@@ -67,6 +76,23 @@ def create_db(cfg: fig.Configuration):
 	print(f'Setup database file {m.path} and populated with {len(todo)} new records.')
 
 
+@fig.script('statement')
+def submit_statement(cfg: fig.Configuration):
+	m = get_manager(cfg)
+	m.initialize()
 
+	date = cfg.pull('date',)
+	date = parser.parse(date).date()
+	# print(f'Using date {date}')
+
+	acc = cfg.pull('account', None)
+	if acc is not None:
+		acc = m.p(acc)
+
+	m.create_current('statement', account=acc)
+
+
+
+	pass
 
 
