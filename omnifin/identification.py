@@ -4,7 +4,6 @@ from functools import cached_property
 from .managing import FinanceManager
 
 
-
 @fig.component('id')
 class Identifier:
 	_manager: FinanceManager = None
