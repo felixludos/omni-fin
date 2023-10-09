@@ -3,6 +3,8 @@ import sqlite3
 import omnifig as fig
 
 
+
+
 def get_path(cfg: fig.Configuration,
 			 path_key='path', root_key='root',
 			 path_default=None, root_default=None,
@@ -22,6 +24,17 @@ def get_path(cfg: fig.Configuration,
 			path = root / path
 
 	return path
+
+
+
+def format_location(*, city: str = None, location: str = None, cat: str = None) -> str:
+	city = city or ''
+	location = location or ''
+	cat = cat or ''
+
+	if ',' in city or ',' in location or ',' in cat:
+		raise ValueError(f"Commas are not allowed in location fields: {city!r}, {location!r}, {cat!r}")
+	return ','.join([city, location, cat])
 
 
 

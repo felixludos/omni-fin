@@ -24,13 +24,23 @@
 #path: extra/usbank-test.json
 #loc-path: extra/usbank-sols.csv
 
-_meta.script_name: costco-locs
-
-path: extra/Date range.json
-loc-path: extra/Data range-sols.csv
+#_meta.script_name: costco-locs
+#
+#path: extra/Date range.json
+#loc-path: extra/Data range-sols.csv
 
 #overwrite: yes
 
 ########################################################################
 
+_meta.script_name: txns
+
+shortcut-path: db/vault/shortcuts.yml
+path: extra/usbank/usbank-full.json
+
+report: test
+
+processor._type: processor/usbank
+
+dry-run: yes
 
