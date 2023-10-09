@@ -5,9 +5,13 @@ from pathlib import Path
 import omnifig as fig
 import pandas as pd
 from fuzzywuzzy import fuzz
+from datetime import datetime
+from dateutil import parser
 
 
 from .. import misc
+from ..scripts import get_manager, get_world, setup_report
+from ..datcls import Report, Account
 from ..parsing import Parser
 
 
@@ -365,9 +369,23 @@ def costco_locs(cfg: fig.Configuration):
 	return entries, failed
 
 
-@fig.script('submit/usbank')
-def submit_usbank_transactions(cfg: fig.Configuration):
-	raise NotImplementedError
+
+class Processor(fig.Configurable):
+	def process(self, entry: dict) -> dict | None:
+		raise NotImplementedError
+
+
+
+@fig.component('processor/usbank')
+class USBank_Credit_Card_Proc(Processor):
+	def process(self, entry: dict) -> dict | None:
+
+
+
+		pass
+
+
+
 
 
 

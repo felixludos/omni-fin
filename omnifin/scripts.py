@@ -1,20 +1,67 @@
 from pathlib import Path
 from tqdm import tqdm
-from omnibelt import load_yaml, save_yaml
+from tabulate import tabulate
+from omnibelt import load_yaml, save_yaml, load_json, save_json
 import omnifig as fig
+from datetime import datetime
 from dateutil import parser
 
 from . import misc
-from .datcls import Account, Asset, Tag
+from .datcls import Account, Asset, Tag, Report, Transaction
 from .managing import FinanceManager
-from .identification import Identifier
+from .identification import Identifier, World
 
-def get_manager(cfg: fig.Configuration) -> FinanceManager:
+
+
+def get_manager(cfg: fig.Configuration = None) -> FinanceManager:
+	if cfg is None:
+		cfg = fig.create_config()
 	cfg.push('manager._type', 'manager', overwrite=False, silent=True)
 	m = cfg.pull('manager')
 
 	Identifier._manager = m
 	return m
+
+
+def get_world(cfg: fig.Configuration = None):
+	if cfg is None:
+		cfg = fig.create_config()
+	cfg.push('world._type', 'world', overwrite=False, silent=True)
+
+	w: World = cfg.pull('world')
+
+	path = misc.get_path(cfg, path_key='shortcut-path', root_key='root')
+	if path is not None:
+		shortcuts = load_yaml(path)
+		w.asset_shortcuts.update(shortcuts.get('assets', {}))
+		w.account_shortcuts.update(shortcuts.get('accounts', {}))
+
+	return w
+
+
+def setup_report(cfg: fig.Configuration):
+	rep: Report | str = cfg.pull('report', 'manual')
+	if isinstance(rep, str):
+		rep = Report(category=rep)
+
+	# acc: Account | str = cfg.pull('account', None)
+	# if isinstance(acc, str):
+	# 	acc = Account(name=acc)
+	# if acc is not None:
+	# 	rep.account = acc
+
+	acc = rep.account
+	if acc is not None:
+		acc_options = list(acc.fill())
+		if len(acc_options) > 1:
+			raise ValueError(f'Found multiple accounts matching {acc}: {acc_options}')
+		elif len(acc_options) == 0:
+			raise ValueError(f'Found no accounts matching {acc}')
+		acc = acc_options[0]
+		cfg.print(f'Using account {acc}')
+
+	return rep
+
 
 
 @fig.script('init-db')
@@ -84,15 +131,82 @@ def submit_statement(cfg: fig.Configuration):
 	date = cfg.pull('date',)
 	date = parser.parse(date).date()
 	# print(f'Using date {date}')
+	# rep.date = datetime.now().strftime('%Y-%m-%d') if rep.date is None \
+	# 	else parser.parse(rep.date).strftime('%Y-%m-%d')
 
 	acc = cfg.pull('account', None)
 	if acc is not None:
 		acc = m.p(acc)
 
-	m.create_current('statement', account=acc)
+	# m.create_current('statement', account=acc)
+
+	raise NotImplementedError
 
 
 
-	pass
+@fig.script('txns')
+def submit_transactions(cfg: fig.Configuration):
+	path = misc.get_path(cfg, path_key='path', root_key='root')
+	if path is None:
+		raise ValueError(f'No path of transactions specified.')
+	if not path.exists():
+		raise FileNotFoundError(f'File {path} not found.')
+
+	entries = load_json(path)
+	cfg.print(f'Loaded {len(entries)} entries from {path}')
+
+	proc = cfg.pulls('processor', 'proc')
+
+	cfg.print(f'Loading database...', end=' ')
+	m = get_manager(cfg)
+	m.initialize()
+	w = get_world(cfg)
+	w.populate()
+	cfg.print(f'done.')
+
+	rep: Report = setup_report(cfg)
+
+	strict = cfg.pull('strict', False)
+	dry_run = cfg.pull('dry-run', False)
+
+	new, skipped, errs = [], [], []
+
+	pbar = cfg.pull('pbar', True, silent=True)
+	itr = iter(entries)
+	if pbar: itr = tqdm(itr, total=len(entries))
+	for entry in itr:
+		itr.set_description(f'new={len(new)}, errs={len(errs)}, skipped={len(skipped)}')
+		try:
+			txn = proc.process(entry)
+		except Exception as e:
+			errs.append((entry, e))
+		else:
+			if txn is None:
+				skipped.append(entry)
+			else:
+				if isinstance(txn, dict):
+					txn = Transaction(**txn)
+				assert isinstance(txn, Transaction), f'Invalid transaction type: {txn}'
+				new.append(txn)
+
+	if len(errs):
+		tbl = tabulate([(err.__class__.__name__, str(err), str(entry))
+			for entry, err in errs], headers=['error', 'message', 'entry'])
+
+		cfg.print(tbl)
+		cfg.print(f'Found {len(errs)} errors.')
+
+	if len(skipped):
+		cfg.print(f'Skipped {len(skipped)} entries.')
+
+	if len(new) and not dry_run and (not strict or len(errs)+len(skipped) == 0):
+		rep = m.write_report(rep)
+		cfg.print(f'Adding {len(new)} new transactions with report {rep}')
+		m.write_all(new)
+	else:
+		cfg.print(f'Found {len(new)} new transactions. Not writing anything.')
+
+	return new, skipped, errs
+
 
 

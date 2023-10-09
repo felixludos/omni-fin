@@ -71,7 +71,7 @@ class Asset(Fillable, Figged, table='assets'):
 		return self.name
 
 	def __loaded_repr__(self):
-		return f'<{self.category}:{self.name}>'
+		return f'[{self.category}:{self.name}]'
 
 	def shortcuts(self):
 		yield self.name
@@ -88,15 +88,16 @@ class Tag(Fillable, Figged, table='tags'):
 	report: Report
 
 	def __loaded_str__(self):
-		return f'<TAG:{self.name}>'
+		return f'<{"TAG" if self.category is None else self.category}:{self.name}>'
 
 	def __loaded_repr__(self):
-		return f'<TAG:{self.name}>'
+		return f'<{"TAG" if self.category is None else self.category}:{self.name}>'
 
 	def shortcuts(self):
 		yield self.name
 		yield f'<{self.name}>'
 		yield f'TAG:{self.name}'
+		yield f'{"TAG" if self.category is None else self.category}:{self.name}'
 
 
 
@@ -118,8 +119,8 @@ class Account(Tagged, Figged, table='accounts'):
 
 	def __loaded_repr__(self):
 		if self.category is None:
-			return f'<{self.name}>'
-		return f'<{self.category}:{self.name}>'
+			return '{' f'{self.name}' '}'
+		return '{' f'{self.category}:{self.name}' '}'
 
 	def shortcuts(self):
 		yield self.name

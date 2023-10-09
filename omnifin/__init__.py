@@ -5,4 +5,4 @@ from .building import init_db
 from .managing import FinanceManager
 from . import scripts
 from . import parsers
-from .identification import Identifier
+from .identification import World, UnknownAssetError, UnknownAccountError
