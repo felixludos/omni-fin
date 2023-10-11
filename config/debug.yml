@@ -1,8 +1,8 @@
 
 #_meta.script_name: init-db
 #
-#_base: [local]
-##_base: [vault]
+##_base: [local]
+#_base: [vault]
 
 ########################################################################
 
@@ -35,12 +35,16 @@
 
 _meta.script_name: txns
 
+_base: [vault]
+
 shortcut-path: db/vault/shortcuts.yml
 path: extra/usbank/usbank-full.json
+
+account: flex-perks
 
 report: test
 
 processor._type: processor/usbank
 
-dry-run: yes
+#dry-run: yes
 

@@ -5,21 +5,21 @@ from .records import datelike, Figged, Record, Fillable, Tagged, Linked
 
 
 # adds functions to read records
-def init_loading(conn: sqlite3.Connection):
+def init_loading(manager):
 	def load_record(record: Record, table_name: str, primary_key: int) -> tuple:
-		c = conn.cursor()
+		c = manager.conn.cursor()
 		c.execute(f'SELECT * FROM {table_name} WHERE id = ?', (primary_key,))
 		return c.fetchone()
 	Record._load_fn = load_record
 
 	def load_tags(record: Record, table_name: str, primary_key: int) -> list['Tag']:
-		c = conn.cursor()
-		c.execute(f'SELECT tag_id FROM {table_name} WHERE transaction_id = ?', (primary_key,))
+		c = manager.conn.cursor()
+		c.execute(f'SELECT tag_id FROM {table_name} WHERE id = ?', (primary_key,))
 		return [Tag.from_key(tag_id) for tag_id, in c.fetchall()]
 	Tagged._load_tags = load_tags
 
 	def load_links(record: Record, table_name: str, primary_key: int) -> tuple:
-		c = conn.cursor()
+		c = manager.conn.cursor()
 		c.execute(f'SELECT id1 FROM {table_name} WHERE id2 = ?', (primary_key,))
 		links1 = [Transaction.from_key(edge) for edge, in c.fetchall()]
 		c.execute(f'SELECT id2 FROM {table_name} WHERE id1 = ?', (primary_key,))
@@ -28,10 +28,13 @@ def init_loading(conn: sqlite3.Connection):
 	Linked._load_links = load_links
 
 	def find_rows(record: Record, table_name: str, props) -> list[tuple]:
-		c = conn.cursor()
+		c = manager.conn.cursor()
+
 		query = f'SELECT * FROM {table_name}'
-		props = {k: v for k, v in props.items() if v is not None}
+		props = {k: v.ID if isinstance(v, Record) else v for k, v in props.items() if v is not None}
 		if len(props) > 0:
+			info = manager.get_table_properties(table_name)
+			props = {col: props[k] for (_, col, *_), k in zip(info, record.__annotations__) if k in props}
 			query += ' WHERE '
 			query += ' AND '.join(f'{k} = ?' for k in props)
 		c.execute(query, tuple(props.values()))

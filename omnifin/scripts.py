@@ -44,11 +44,11 @@ def setup_report(cfg: fig.Configuration):
 	if isinstance(rep, str):
 		rep = Report(category=rep)
 
-	# acc: Account | str = cfg.pull('account', None)
-	# if isinstance(acc, str):
-	# 	acc = Account(name=acc)
-	# if acc is not None:
-	# 	rep.account = acc
+	acc: Account | str = cfg.pull('account', None)
+	if isinstance(acc, str):
+		acc = Account(name=acc)
+	if acc is not None:
+		rep.account = acc
 
 	acc = rep.account
 	if acc is not None:
@@ -71,8 +71,8 @@ def create_db(cfg: fig.Configuration):
 	if root is not None:
 		root = Path(root)
 
-	assets = cfg.pull('assets', None)
-	accounts = cfg.pull('accounts', None)
+	assets = cfg.pull('init-assets', None)
+	accounts = cfg.pull('init-accounts', None)
 
 	m = get_manager(cfg)
 
@@ -157,14 +157,18 @@ def submit_transactions(cfg: fig.Configuration):
 
 	proc = cfg.pulls('processor', 'proc')
 
-	cfg.print(f'Loading database...', end=' ')
 	m = get_manager(cfg)
 	m.initialize()
 	w = get_world(cfg)
 	w.populate()
-	cfg.print(f'done.')
+	cfg.print(f'Loaded database.')
+
+	proc.prepare(w)
 
 	rep: Report = setup_report(cfg)
+
+	# cfg.print(f'Using report {rep} (associated with {"no account" if rep.account is None else rep.account})')
+	cfg.print(f'Using report {rep}')
 
 	strict = cfg.pull('strict', False)
 	dry_run = cfg.pull('dry-run', False)
@@ -179,6 +183,7 @@ def submit_transactions(cfg: fig.Configuration):
 		try:
 			txn = proc.process(entry)
 		except Exception as e:
+			raise e
 			errs.append((entry, e))
 		else:
 			if txn is None:
@@ -201,12 +206,21 @@ def submit_transactions(cfg: fig.Configuration):
 
 	if len(new) and not dry_run and (not strict or len(errs)+len(skipped) == 0):
 		rep = m.write_report(rep)
+		m.current_report = rep
 		cfg.print(f'Adding {len(new)} new transactions with report {rep}')
-		m.write_all(new)
+		m.write_all(new, pbar=tqdm if pbar else None)
 	else:
 		cfg.print(f'Found {len(new)} new transactions. Not writing anything.')
 
 	return new, skipped, errs
+
+
+@fig.script('undo')
+def undo_report(cfg: fig.Configuration):
+
+
+
+	pass
 
 
 

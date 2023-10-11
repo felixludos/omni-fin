@@ -49,7 +49,12 @@ class Record:
 		# self.ID = ID
 		# self._record_cache[ID] = self
 		# self._loaded = True
-		return self.from_key(ID).load()
+		assert ID not in self._record_cache, f"Record {self} already exists in cache."
+		self._primary_key = ID
+		self.load()
+		self._record_cache[ID] = self
+		# return self.from_key(ID).load()
+		return self
 
 	def __new__(cls, primary_key=None, **kwargs):
 		if primary_key is None:
@@ -206,6 +211,14 @@ class Fillable(Record):
 		for raw in self._fill_fn(self.table_name, self.as_dict()):
 			yield self.from_raw(raw)
 
+	def in_db(self):
+		if self.exists():
+			return True
+		try:
+			next(self.fill())
+		except StopIteration:
+			return False
+		return True
 
 
 
@@ -217,19 +230,28 @@ class Tagged(Fillable):
 		raise NotImplementedError
 
 	def tags(self):
-		tags = getattr(self, '_tags', None)
-		if tags is None:
-			if self._tags_table_name is None:
+		existing = getattr(self, '_existing_tags', None)
+		if existing is None and self.exists():
+			if self.tags_table_name is None:
 				raise NotImplementedError(f"Table name {self.__class__.__name__} not set.")
-			tags = self._load_tags(self.tags_table_name, self.primary_key)
-			setattr(self, '_tags', tags)
-		return tags
+			existing = self._load_tags(self.tags_table_name, self.primary_key)
+			setattr(self, '_existing_tags', existing)
+		if existing is not None:
+			yield from existing
+		new = getattr(self, '_new_tags', None)
+		if new is not None:
+			yield from new
 
-	def update_tags(self, tags: Iterable['Tag']):
-		existing = getattr(self, '_tags', None)
-		if existing is None:
-			raise NotImplementedError(f"No tags found for {self}.")
-		self._tags.extend([tag for tag in tags if tag not in existing])
+	def new_tags(self):
+		yield from getattr(self, '_new_tags', ())
+
+	def add_tag(self, *tags: 'Tag'):
+		new = getattr(self, '_new_tags', None)
+		if new is None:
+			setattr(self, '_new_tags', [])
+		new = getattr(self, '_new_tags')
+		existing = getattr(self, '_existing_tags', None)
+		new.extend(tag for tag in tags if tag not in new and (existing is None or tag not in existing))
 
 
 

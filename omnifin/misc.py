@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+from omnibelt import load_json, save_json
 import omnifig as fig
 
 
@@ -62,5 +63,17 @@ def load_db(path: Path | None = None):
 
 	conn = sqlite3.connect(path)
 	return conn
+
+
+
+class MCC:
+	def __init__(self):
+		self.path = assets_root() / 'mcc_codes.json'
+		self.full = load_json(self.path)
+		self.codes = {v['mcc']: v for  v in self.full}
+
+	def find(self, code: int | str):
+		code = str(code).zfill(4)
+		return self.codes.get(code, None)
 
 

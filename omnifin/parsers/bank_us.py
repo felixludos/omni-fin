@@ -10,8 +10,8 @@ from dateutil import parser
 
 
 from .. import misc
-from ..scripts import get_manager, get_world, setup_report
-from ..datcls import Report, Account
+from ..scripts import get_manager, get_world, setup_report, World
+from ..datcls import Report, Account, Transaction, Tag, Record
 from ..parsing import Parser
 
 
@@ -371,18 +371,82 @@ def costco_locs(cfg: fig.Configuration):
 
 
 class Processor(fig.Configurable):
-	def process(self, entry: dict) -> dict | None:
+	def __init__(self, **kwargs):
+		super().__init__(**kwargs)
+		self.mcc = misc.MCC()
+
+	def process(self, entry: dict) -> Record | dict | None:
 		raise NotImplementedError
 
 
 
 @fig.component('processor/usbank')
 class USBank_Credit_Card_Proc(Processor):
-	def process(self, entry: dict) -> dict | None:
+	def __init__(self, account: str, **kwargs):
+		super().__init__(**kwargs)
+		self.account_name = account
+		self.mcc_tags = {}
 
 
+	def prepare(self, w: World):
+		self.w = w
+		self.sender = w.find_account(self.account_name)
+		self.receiver = w.find_account('merchant')
 
-		pass
+		self.mcc_tags.update({t.name: t for t in Tag(category='MCC').fill()})
+
+
+	def get_mcc_tag(self, code):
+		if code not in self.mcc_tags:
+			desc = self.mcc.find(code)
+			if desc is not None:
+				desc = desc['irs_description']
+			self.mcc_tags[code] = Tag(name=code, category='MCC', description=desc)
+		return self.mcc_tags[code]
+
+
+	def process(self, entry: dict):
+		da = entry['date']
+
+		city, loc, online = entry.get('city'), entry.get('location'), entry.get('online', False)
+		if city is not None or loc is not None:
+			loc = misc.format_location(city=city, location=loc, cat='online' if online else '')
+
+		ref = entry.get('txn-number')
+
+		mcc = entry.get('mcc')
+		if mcc is not None and len(mcc) == 5:
+			code = mcc[1:]
+			mcc = self.get_mcc_tag(code)
+
+		amount = entry['usd']
+		unit = self.w.find_asset('usd')
+
+		rec_amt = entry.get('received-amount')
+		rec_unit = None
+		if rec_amt is not None:
+			rec_unit = self.w.find_asset(entry['received-unit'])
+
+		txn = Transaction(
+			date=da,
+			location=loc,
+			sender=self.sender,
+			amount=amount,
+			unit=unit,
+			receiver=self.receiver,
+			received_amount=rec_amt,
+			received_unit=rec_unit,
+			description=entry.get('cleaned', entry.get('original')),
+			reference=ref,
+		)
+		if Transaction(date=da, reference=ref,
+					   sender=self.sender, receiver=self.receiver,
+					   amount=amount, unit=unit).in_db():
+			return None
+		if mcc is not None:
+			txn.add_tag(mcc)
+
+		return txn
 
 
 

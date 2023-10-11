@@ -33,9 +33,9 @@ class FinanceManager(fig.Configurable):
 
 	def initialize(self):
 		init_db(self.conn)
-		init_loading(self.conn)
 		if self.db_info is None:
 			self.db_info = self.get_db_info()
+		init_loading(self)
 		return self.db_info
 
 	def get_db_info(self):
@@ -114,19 +114,34 @@ class FinanceManager(fig.Configurable):
 
 	def write(self, record: Record, commit=True):
 		assert not isinstance(record, Report), f'Use write_report to write reports'
-		assert not record.exists(), f'Record {record} already exists'
+		# assert not record.exists(), f'Record {record} already exists'
 		if self.current_report is None:
 			raise ReportNotSetError
 		table = record.table_name
-		row = record.export_row(self.current_report)
-		ID = self._write_record(table, row, commit=commit)
-		return record.set_ID(ID)
 
-	def write_all(self, records: Iterable[Record]):
-		for record in records:
+		if isinstance(record, Tagged):
+			self.write_all(tag for tag in record.new_tags() if not tag.exists())
+		try:
+			existing = record if record.exists() else next(record.fill())
+		except StopIteration:
+			row = record.export_row(self.current_report)
+			ID = self._write_record(table, row, commit=commit)
+
+			rec = record.set_ID(ID)
+			if isinstance(record, Tagged):
+				self.add_tags(rec, *record.new_tags())
+			return rec
+		else:
+			return existing
+
+	def write_all(self, records: Iterable[Record], pbar=None):
+		itr = records
+		if pbar is not None:
+			itr = pbar(itr)
+			itr.set_description(f'Writing records')
+		for record in itr:
 			self.write(record, commit=False)
 		self.conn.commit()
-
 
 	def populate_shortcuts(self):
 		fails = []
@@ -209,5 +224,25 @@ class FinanceManager(fig.Configurable):
 		query = f'SELECT * FROM reports ORDER BY created_at DESC LIMIT {max_num}'
 		self._execute(query)
 		return [Report.from_raw(row) for row in self.cursor.fetchall()]
+
+
+	def report_contents(self, rep: Report = None):
+		if rep is None:
+			if self.current_report:
+				raise ReportNotSetError
+			rep = self.current_report
+		contents = {}
+		for table in ['accounts', 'assets', 'statements', 'tags', 'transactions', 'verifications',
+					  'transaction_links', 'statement_links', 'transaction_tags', 'statement_tags', 'account_tags',
+					  'transaction_revisions', 'statement_revisions']:
+			query = f'SELECT COUNT(*) FROM {table} WHERE report = ?'
+			self._execute(query, (rep.ID,))
+			num = self.cursor.fetchone()[0]
+			if num > 0:
+				contents[table] = num
+		return contents
+
+
+
 
 
