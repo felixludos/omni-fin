@@ -143,7 +143,7 @@ def init_db(conn: sqlite3.Connection):
         tag_id INTEGER,
         report INTEGER NOT NULL,
         FOREIGN KEY (id) REFERENCES transactions(id),
-        FOREIGN KEY (tag_id) REFERENCES tags(tag_id),
+        FOREIGN KEY (tag_id) REFERENCES tags(id),
         FOREIGN KEY (report) REFERENCES reports(id),
         PRIMARY KEY(id, tag_id)
     );
@@ -154,7 +154,7 @@ def init_db(conn: sqlite3.Connection):
         tag_id INTEGER,
         report INTEGER NOT NULL,
         FOREIGN KEY (id) REFERENCES statements(id),
-        FOREIGN KEY (tag_id) REFERENCES tags(tag_id),
+        FOREIGN KEY (tag_id) REFERENCES tags(id),
         FOREIGN KEY (report) REFERENCES reports(id),
         PRIMARY KEY(id, tag_id)
     );
@@ -165,7 +165,7 @@ def init_db(conn: sqlite3.Connection):
         tag_id INTEGER,
         report INTEGER NOT NULL,
         FOREIGN KEY (id) REFERENCES accounts(id),
-        FOREIGN KEY (tag_id) REFERENCES tags(tag_id),
+        FOREIGN KEY (tag_id) REFERENCES tags(id),
         FOREIGN KEY (report) REFERENCES reports(id),
         PRIMARY KEY(id, tag_id)
     );

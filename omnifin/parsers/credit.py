@@ -8,11 +8,12 @@ from fuzzywuzzy import fuzz
 from datetime import datetime
 from dateutil import parser
 
-
 from .. import misc
-from ..scripts import get_manager, get_world, setup_report, World
+from ..scripts import get_manager, get_world, setup_report
+from ..identification import World
 from ..datcls import Report, Account, Transaction, Tag, Record
-from ..parsing import Parser
+from ..parsing import Parser, Processor, ParseError
+
 
 
 @fig.component('parser/usbank')
@@ -370,39 +371,87 @@ def costco_locs(cfg: fig.Configuration):
 
 
 
-class Processor(fig.Configurable):
-	def __init__(self, **kwargs):
-		super().__init__(**kwargs)
-		self.mcc = misc.MCC()
+@fig.component('parser/amazon')
+class Amazon_Parser(Parser):
+	def __init__(self, include_missing_properties=True, skip_payments=True):
+		self.include_missing_properties = include_missing_properties
+		self.skip_payments = skip_payments
+		if not skip_payments:
+			raise NotImplementedError
 
-	def process(self, entry: dict) -> Record | dict | None:
-		raise NotImplementedError
+
+	def parse(self, info: dict) -> dict | None:
+		if self.skip_payments and info['Type'] == 'Payment':
+			return
+
+		info['usd'] = abs(info['Amount'])
+
+		desc = info['Description']
+
+		if desc.lower().startswith('amazon.com'):
+			info['merchant'] = 'Amazon'
+			info['reference'] = desc.split('*')[1].strip()
+			info['location'] = 'United States'
+			info['online'] = True
+		elif (desc.lower().startswith('amzn mktp') or desc.lower().startswith('amznmktplace')
+		      or desc.lower().startswith('amazon tips')):
+			# may include Returns (info['Type'] == 'Return')
+			terms = desc.split('*')
+			if len(terms) == 2:
+				head, ref = terms
+				ref = ref.split(' ')[0].strip()
+			else:
+				head = terms[0]
+				ref = None
+			info['reference'] = ref
+			info['location'] = 'Germany' if head.endswith('DE') else 'United States'
+			info['online'] = True
+		elif desc.lower().startswith('amazon prime'):
+			info['merchant'] = 'Amazon'
+			info['reference'] = desc.split('*')[1].strip()
+			info['location'] = 'United States'
+			info['online'] = True
+		elif desc.startswith('WHOLEFDS'):
+			info['merchant'] = 'Whole Foods'
+			if 'RMD' in desc:
+				info['location'] = 'Redmond,Washington'
+			elif self.include_missing_properties:
+				info['location'] = '[MISSING]'
+			info['online'] = False
+		else:
+			print(f'\nFailed on: {desc!r}')
+			# raise ParseError(f'Unknown description: {desc}')
+			if self.include_missing_properties:
+				info['merchant'] = '[MISSING]'
+				info['location'] = '[MISSING]'
+				info['online'] = '[MISSING]'
+
+		info['original'] = info['Description']
+		info['type'] = info['Type']
+		info['category'] = info['Category']
+		info['date'] = info['Transaction Date']
+		info['posted-date'] = info['Post Date']
+
+		del info['Memo'], info['Description'], info['Type'], info['Category'], info['Transaction Date'], info['Post Date'], info['Amount']
+		return info
+
+
+
+# Processor
 
 
 
 @fig.component('processor/usbank')
-class USBank_Credit_Card_Proc(Processor):
+class USBank_Card_Proc(Processor):
 	def __init__(self, account: str, **kwargs):
 		super().__init__(**kwargs)
 		self.account_name = account
-		self.mcc_tags = {}
 
 
 	def prepare(self, w: World):
-		self.w = w
 		self.sender = w.find_account(self.account_name)
 		self.receiver = w.find_account('merchant')
-
-		self.mcc_tags.update({t.name: t for t in Tag(category='MCC').fill()})
-
-
-	def get_mcc_tag(self, code):
-		if code not in self.mcc_tags:
-			desc = self.mcc.find(code)
-			if desc is not None:
-				desc = desc['irs_description']
-			self.mcc_tags[code] = Tag(name=code, category='MCC', description=desc)
-		return self.mcc_tags[code]
+		super().prepare(w)
 
 
 	def process(self, entry: dict):
@@ -443,14 +492,180 @@ class USBank_Credit_Card_Proc(Processor):
 					   sender=self.sender, receiver=self.receiver,
 					   amount=amount, unit=unit).in_db():
 			return None
-		if mcc is not None:
+		if isinstance(mcc, Tag):
 			txn.add_tag(mcc)
 
 		return txn
 
 
 
+@fig.component('processor/costco')
+class Costco_Card_Proc(Processor):
+	def __init__(self, account: str, **kwargs): # costco-gu, costco-ma
+		super().__init__(**kwargs)
+		self.account_name = account
 
+
+	def prepare(self, w: World):
+		self.w = w
+		self.sender = w.find_account(self.account_name)
+		self.receiver = w.find_account('merchant')
+		super().prepare(w)
+
+
+	def process(self, entry: dict):
+		da = entry['date']
+		da = datetime.strptime(da, '%m/%d/%Y')
+
+		city, loc, online = entry.get('city'), entry.get('location'), entry.get('online', False)
+		if city is not None or loc is not None:
+			loc = misc.format_location(city=city, location=loc, cat='online' if online else '')
+
+		mcc = entry.get('mcc')
+		if mcc is not None and len(mcc) == 5:
+			code = mcc[1:]
+			mcc = self.get_mcc_tag(code)
+
+		amount = entry['usd']
+		unit = self.w.find_asset('usd')
+
+		rec_amt = entry.get('received-amount')
+		rec_unit = None
+		if rec_amt is not None:
+			rec_unit = self.w.find_asset(entry['received-unit'])
+
+		txn = Transaction(
+			date=da,
+			location=loc,
+			sender=self.sender,
+			amount=amount,
+			unit=unit,
+			receiver=self.receiver,
+			received_amount=rec_amt,
+			received_unit=rec_unit,
+			description=entry.get('cleaned', entry.get('original')),
+			# reference=ref,
+		)
+		if Transaction(date=da, #reference=ref,
+					   sender=self.sender, receiver=self.receiver,
+					   amount=amount, unit=unit).in_db():
+			return None
+		if isinstance(mcc, Tag):
+			txn.add_tag(mcc)
+
+		return txn
+
+
+
+@fig.component('processor/capitalone')
+class Capitalone_Proc(Processor):
+	def prepare(self, w: World):
+		self.w = w
+		self.sender = w.find_account('capitalone')
+		self.receiver = w.find_account('merchant')
+		super().prepare(w)
+
+
+	def process(self, entry: dict):
+		assert entry['Card No.'] == 3227, f'Expected card number 3227, got {entry["Card No."]}'
+		if entry['Credit'] is not None:
+			return
+
+		da = entry['Transaction Date']
+		da = datetime.strptime(da, '%Y-%m-%d')
+		# da = parser.parse(da)
+
+		city, loc, online = entry.get('City'), entry.get('State'), entry.get('Online', False)
+		if city is not None or loc is not None:
+			loc = misc.format_location(city=city, location=loc, cat='online' if online else '')
+
+		ref = entry.get('Reference')
+
+		mcc = entry.get('MCC')
+		if mcc is not None and isinstance(mcc, int):
+			mcc = self.get_mcc_tag(str(mcc))
+
+		amount = entry['Debit']
+		unit = self.w.find_asset('usd')
+
+		desc = f'{entry["Description"]}|{entry["Category"]}'
+
+		txn = Transaction(
+			date=da,
+			location=loc,
+			sender=self.sender,
+			amount=amount,
+			unit=unit,
+			receiver=self.receiver,
+			description=desc,
+			reference=ref,
+		)
+		if Transaction(date=da, reference=ref,
+					   sender=self.sender, receiver=self.receiver,
+					   amount=amount, unit=unit).in_db():
+			return None
+		if isinstance(mcc, Tag):
+			txn.add_tag(mcc)
+
+		return txn
+
+
+
+@fig.component('processor/amazon')
+class Amazon_Proc(Processor):
+	def prepare(self, w: World):
+		self.w = w
+		self.sender = w.find_account('amazon')
+		self.receiver = w.find_account('merchant')
+		super().prepare(w)
+
+
+	def process(self, entry: dict):
+		da = entry['date']
+		da = datetime.strptime(da, '%m/%d/%Y')
+		# da = parser.parse(da)
+
+		loc = entry['location']
+		online = entry.get('online', False)
+
+		terms = loc.split(',')
+		if len(terms) == 2:
+			city, loc = terms
+		else:
+			city = None
+			loc = terms[0]
+		if city is not None or loc is not None:
+			loc = misc.format_location(city=city, location=loc, cat='online' if online else '')
+
+		ref = entry.get('reference')
+
+		mcc = entry.get('mcc')
+		if mcc is not None and isinstance(mcc, int):
+			mcc = self.get_mcc_tag(str(mcc))
+
+		amount = entry['usd']
+		unit = self.w.find_asset('usd')
+
+		desc = f'{entry["original"]}|{entry["category"]}'
+
+		txn = Transaction(
+			date=da,
+			location=loc,
+			sender=self.sender,
+			amount=amount,
+			unit=unit,
+			receiver=self.receiver,
+			description=desc,
+			reference=ref,
+		)
+		if Transaction(date=da, reference=ref,
+					   sender=self.sender, receiver=self.receiver,
+					   amount=amount, unit=unit).in_db():
+			return None
+		if isinstance(mcc, Tag):
+			txn.add_tag(mcc)
+
+		return txn
 
 
 

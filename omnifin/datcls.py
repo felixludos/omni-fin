@@ -191,3 +191,40 @@ class Transaction(Tagged, Linked, Figged, table='transactions'):
 				f'{self.date.strftime("%y-%m-%d")}>')
 
 
+
+@fig.component('verification')
+class Verification(Tagged, Linked, Figged, table='verifications'):
+	ID: int = None
+	txn: Transaction = None
+	date: datelike
+	location: str = None
+	sender: Account
+	amount: float
+	unit: Asset
+	receiver: Account
+	received_amount: float = None
+	received_unit: Asset = None
+	description: str = None
+	reference: str = None
+	report: Report
+
+	@property
+	def tags_table_name(self):
+		return 'verification_tags'
+	@property
+	def links_table_name(self):
+		return 'verification_links'
+
+	def __loaded_str__(self):
+		if self.received_amount is None:
+			return f'{self.sender} {self.amount} {self.unit} -> {self.receiver}'
+		return f'{self.sender} {self.amount} {self.unit} -> {self.receiver} {self.received_amount} {self.received_unit}'
+
+	def __loaded_repr__(self):
+		if self.received_amount is None:
+			return f'<{self.sender} -> {self.receiver}, {self.amount} {self.unit}, {self.date.strftime("%y-%m-%d")}>'
+		return (f'<{self.sender} -> {self.receiver}, '
+				f'{self.amount} {self.unit} -> {self.received_amount} {self.received_unit}, '
+				f'{self.date.strftime("%y-%m-%d")}>')
+
+

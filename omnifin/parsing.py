@@ -5,6 +5,8 @@ import omnifig as fig
 # import csv
 import pandas as pd
 
+from .identification import World
+from .datcls import Tag
 from . import misc
 # from .datcls import Record, Report, Transaction, Account, Asset, Tag, Statement
 
@@ -12,6 +14,32 @@ from . import misc
 
 class ParseError(ValueError):
 	pass
+
+
+
+class Processor(fig.Configurable):
+	def __init__(self, **kwargs):
+		super().__init__(**kwargs)
+		self.mcc = misc.MCC()
+		self.mcc_tags = {}
+
+
+	def prepare(self, w: World):
+		self.w = w
+		self.mcc_tags.update({t.name: t for t in Tag(category='MCC').fill()})
+
+
+	def get_mcc_tag(self, code):
+		if code not in self.mcc_tags:
+			desc = self.mcc.find(code)
+			if desc is not None:
+				desc = desc['irs_description']
+			self.mcc_tags[code] = Tag(name=code, category='MCC', description=desc)
+		return self.mcc_tags[code]
+
+
+	def process(self, entry: dict) -> dict | None:
+		raise NotImplementedError
 
 
 

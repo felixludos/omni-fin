@@ -1,7 +1,7 @@
 
 root._type: repo-root
 
-db: db/omnifin.db
+db: db/old-omnifin.db
 
 accounts: demo\accounts.yml
 assets: demo\assets.yml

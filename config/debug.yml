@@ -1,21 +1,27 @@
 
 #_meta.script_name: init-db
-#
-##_base: [local]
-#_base: [vault]
+##
+###_base: [local]
+_base: [vault]
+
+#db: db/vault/demo.db
+#db: novo/report.db
 
 ########################################################################
 
-#_meta.script_name: parse-csv
-#
-#overwrite: yes
-#
-##parser._type: parser/usbank
-##path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
-#
+_meta.script_name: parse-csv
+
+overwrite: yes
+
+#parser._type: parser/usbank
+#path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
+
 #parser._type: parser/costco
 #path: extra/Date range.CSV
 
+parser._type: parser/amazon
+path: extra/amazon/Chase8182_Activity20211006_20231006_20231006.CSV
+out: extra/amazon/amazon.json
 
 ########################################################################
 
@@ -23,6 +29,7 @@
 #
 #path: extra/usbank-test.json
 #loc-path: extra/usbank-sols.csv
+
 
 #_meta.script_name: costco-locs
 #
@@ -33,18 +40,20 @@
 
 ########################################################################
 
-_meta.script_name: txns
-
-_base: [vault]
-
-shortcut-path: db/vault/shortcuts.yml
-path: extra/usbank/usbank-full.json
-
-account: flex-perks
-
-report: test
-
-processor._type: processor/usbank
-
+#_meta.script_name: txns
+#
+#shortcut-path: db/vault/shortcuts.yml
+#
+##path: extra/usbank/flexperks.json
+##account: flex-perks
+#
+##path: extra/usbank/cashplus.json
+#path: novo/cashplus.json
+#account: cashplus
+#
+#report: test
+#
+#processor._type: processor/usbank
+#
 #dry-run: yes
 

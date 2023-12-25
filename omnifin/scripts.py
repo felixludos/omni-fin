@@ -39,26 +39,27 @@ def get_world(cfg: fig.Configuration = None):
 	return w
 
 
-def setup_report(cfg: fig.Configuration):
+def setup_report(cfg: fig.Configuration, w: World):
 	rep: Report | str = cfg.pull('report', 'manual')
 	if isinstance(rep, str):
 		rep = Report(category=rep)
 
 	acc: Account | str = cfg.pull('account', None)
 	if isinstance(acc, str):
-		acc = Account(name=acc)
+		acc = w.find_account(acc)
+		# acc = Account(name=acc)
 	if acc is not None:
 		rep.account = acc
 
-	acc = rep.account
-	if acc is not None:
-		acc_options = list(acc.fill())
-		if len(acc_options) > 1:
-			raise ValueError(f'Found multiple accounts matching {acc}: {acc_options}')
-		elif len(acc_options) == 0:
-			raise ValueError(f'Found no accounts matching {acc}')
-		acc = acc_options[0]
-		cfg.print(f'Using account {acc}')
+	# acc = rep.account
+	# if acc is not None:
+	# 	acc_options = list(acc.fill())
+	# 	if len(acc_options) > 1:
+	# 		raise ValueError(f'Found multiple accounts matching {acc}: {acc_options}')
+	# 	elif len(acc_options) == 0:
+	# 		raise ValueError(f'Found no accounts matching {acc}')
+	# 	acc = acc_options[0]
+	# 	cfg.print(f'Using account {acc}')
 
 	return rep
 
@@ -123,6 +124,7 @@ def create_db(cfg: fig.Configuration):
 	print(f'Setup database file {m.path} and populated with {len(todo)} new records.')
 
 
+
 @fig.script('statement')
 def submit_statement(cfg: fig.Configuration):
 	m = get_manager(cfg)
@@ -165,7 +167,7 @@ def submit_transactions(cfg: fig.Configuration):
 
 	proc.prepare(w)
 
-	rep: Report = setup_report(cfg)
+	rep: Report = setup_report(cfg, w)
 
 	# cfg.print(f'Using report {rep} (associated with {"no account" if rep.account is None else rep.account})')
 	cfg.print(f'Using report {rep}')
@@ -217,10 +219,7 @@ def submit_transactions(cfg: fig.Configuration):
 
 @fig.script('undo')
 def undo_report(cfg: fig.Configuration):
-
-
-
-	pass
+	raise NotImplementedError
 
 
 
