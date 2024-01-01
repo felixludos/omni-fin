@@ -197,7 +197,6 @@ class BECU(American_Bank_Processor):
 
 
 
-
 class European_Bank_Processor(Processor):
 	def __init__(self, account: str, **kwargs):
 		super().__init__(**kwargs)
