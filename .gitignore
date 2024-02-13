@@ -6,7 +6,7 @@ __pycache__/
 .idea/
 db/
 extra/
-novo/
+novo-data/
 fin-tx.db
 
 # C extensions

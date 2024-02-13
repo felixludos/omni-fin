@@ -6,3 +6,4 @@ from .managing import FinanceManager
 from . import scripts
 from . import parsers
 from .identification import World, UnknownAssetError, UnknownAccountError
+from . import novo
