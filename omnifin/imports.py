@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime, date as datelike
 from dateutil import parser
 
-from omnibelt import load_csv, load_json, save_json, save_yaml, load_csv_rows
+from omnibelt import load_csv, load_json, save_json, save_yaml, load_csv_rows, load_yaml
 import omnifig as fig
 
 import pandas as pd
