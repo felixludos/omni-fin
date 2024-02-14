@@ -78,6 +78,16 @@ class Report(Record):
 		return cls(ID, category, account, description, created)
 
 
+	def write(self, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = 'INSERT INTO reports (category, associated_account, description) VALUES (?, ?, ?)'
+		conn.execute(cmd, (self.category, self.account.ID if self.account else None, self.description))
+		return conn.cursor().lastrowid
+
 
 @dataclass
 class Asset(Record):
@@ -95,6 +105,29 @@ class Asset(Record):
 		# report = Report.find(report)
 		return cls(ID, name, category, description, report)
 
+
+	def write(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = 'INSERT INTO assets (asset_name, asset_type, description, report) VALUES (?, ?, ?, ?)'
+		conn.execute(cmd, (self.name, self.category, self.description, report.ID))
+		return conn.cursor().lastrowid
+
+
+	def update(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+		if not self.exists:
+			return self.write(report, conn)
+
+		cmd = 'UPDATE assets SET asset_name = ?, asset_type = ?, description = ?, report = ? WHERE id = ?'
+		conn.execute(cmd, (self.name, self.category, self.description, report.ID, self.ID))
+		return self.ID
 
 
 @dataclass
@@ -114,6 +147,29 @@ class Tag(Record):
 		return cls(ID, name, category, description, report)
 
 
+	def write(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = 'INSERT INTO tags (tag_name, category, description, report) VALUES (?, ?, ?, ?)'
+		conn.execute(cmd, (self.name, self.category, self.description, report.ID))
+		return conn.cursor().lastrowid
+
+
+	def update(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+		if not self.exists:
+			return self.write(report, conn)
+
+		cmd = 'UPDATE tags SET tag_name = ?, category = ?, description = ?, report = ? WHERE id = ?'
+		conn.execute(cmd, (self.name, self.category, self.description, report.ID, self.ID))
+		return self.ID
+
 
 @dataclass
 class Account(Record):
@@ -132,6 +188,31 @@ class Account(Record):
 		# report = Report.find(report)
 		return cls(ID, name, category, owner, description, report)
 
+
+	def write(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = ('INSERT INTO accounts (account_name, account_type, account_owner, description, report) '
+			   'VALUES (?, ?, ?, ?, ?)')
+		conn.execute(cmd, (self.name, self.category, self.owner, self.description, report.ID))
+		return conn.cursor().lastrowid
+
+
+	def update(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+		if not self.exists:
+			return self.write(report, conn)
+
+		cmd = ('UPDATE accounts SET account_name = ?, account_type = ?, account_owner = ?, description = ?, report = ? '
+			   'WHERE id = ?')
+		conn.execute(cmd, (self.name, self.category, self.owner, self.description, report.ID, self.ID))
+		return self.ID
 
 
 @dataclass
@@ -155,6 +236,32 @@ class Statement(Record):
 		# report = Report.find(report)
 		return cls(ID, date, account, balance, unit, description, report)
 
+
+	def write(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = ('INSERT INTO statements (dateof, account, balance, unit, description, report) '
+			   'VALUES (?, ?, ?, ?, ?, ?)')
+		conn.execute(cmd, (self.date, self.account.ID, self.balance, self.unit.ID, self.description,
+						   report.ID))
+		return conn.cursor().lastrowid
+
+
+	def update(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+		if not self.exists:
+			return self.write(report, conn)
+
+		cmd = ('UPDATE statements SET dateof = ?, account = ?, balance = ?, unit = ?, description = ?, report = ? '
+			   'WHERE id = ?')
+		conn.execute(cmd, (self.date, self.account.ID, self.balance, self.unit.ID, self.description, report.ID, self.ID))
+		return self.ID
 
 
 @dataclass
@@ -187,6 +294,39 @@ class Transaction(Record):
 		return cls(ID, date, location, sender, amount, unit, receiver, received_amount, received_unit,
 				   description, reference, report)
 
+
+	def write(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = ('INSERT INTO transactions (dateof, location, sender, amount, unit, receiver, received_amount, '
+			   'received_unit, description, reference, report) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+		conn.execute(cmd, (self.date, self.location, self.sender.ID, self.amount, self.unit.ID,
+						   self.receiver.ID, self.received_amount,
+						   self.received_unit.ID if self.received_unit else None,
+						   self.description, self.reference,
+						   report.ID))
+		return conn.cursor().lastrowid
+
+
+	def update(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+		if not self.exists:
+			return self.write(report, conn)
+
+		cmd = ('UPDATE transactions SET dateof = ?, location = ?, sender = ?, amount = ?, unit = ?, receiver = ?, '
+			   'received_amount = ?, received_unit = ?, description = ?, reference = ?, report = ? WHERE id = ?')
+		conn.execute(cmd, (self.date, self.location, self.sender.ID, self.amount, self.unit.ID,
+						   self.receiver.ID, self.received_amount,
+						   self.received_unit.ID if self.received_unit else None,
+						   self.description, self.reference,
+						   report.ID, self.ID))
+		return self.ID
 
 
 @dataclass
@@ -222,6 +362,38 @@ class Verification(Record):
 				   description, reference, report)
 
 
+	def write(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+
+		cmd = ('INSERT INTO verifications (txn, dateof, location, sender, amount, unit, receiver, received_amount, '
+			   'received_unit, description, reference, report) VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+		conn.execute(cmd, (self.txn.ID, self.date, self.location, self.sender.ID, self.amount, self.unit.ID,
+						   self.receiver.ID, self.received_amount,
+						   self.received_unit.ID if self.received_unit else None,
+						   self.description, self.reference,
+						   report.ID))
+
+		return conn.cursor().lastrowid
+
+	def update(self, report: Report, conn=None):
+		if conn is None:
+			conn = self._conn
+		if conn is None:
+			raise ValueError('No connection provided')
+		if not self.exists:
+			return self.write(report, conn)
+
+		cmd = ('UPDATE verifications SET txn = ?, dateof = ?, location = ?, sender = ?, amount = ?, unit = ?, receiver = ?, '
+			   'received_amount = ?, received_unit = ?, description = ?, reference = ?, report = ? WHERE id = ?')
+		conn.execute(cmd, (self.txn.ID, self.date, self.location, self.sender.ID, self.amount, self.unit.ID,
+						   self.receiver.ID, self.received_amount,
+						   self.received_unit.ID if self.received_unit else None,
+						   self.description, self.reference,
+						   report.ID, self.ID))
+		return self.ID
 
 
 
