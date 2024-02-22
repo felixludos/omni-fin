@@ -9,19 +9,19 @@ _base: [vault]
 
 ########################################################################
 
-_meta.script_name: parse-csv
-
-overwrite: yes
-
-#parser._type: parser/usbank
-#path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
-
-#parser._type: parser/costco
-#path: extra/Date range.CSV
-
-parser._type: parser/amazon
-path: extra/amazon/Chase8182_Activity20211006_20231006_20231006.CSV
-out: extra/amazon/amazon.json
+#_meta.script_name: parse-csv
+#
+#overwrite: yes
+#
+##parser._type: parser/usbank
+##path: extra/Credit Card - 3312_01-30-2020_10-03-2023.csv
+#
+##parser._type: parser/costco
+##path: extra/Date range.CSV
+#
+#parser._type: parser/amazon
+#path: extra/amazon/Chase8182_Activity20211006_20231006_20231006.CSV
+#out: extra/amazon/amazon.json
 
 ########################################################################
 
@@ -56,4 +56,16 @@ out: extra/amazon/amazon.json
 #processor._type: processor/usbank
 #
 #dry-run: yes
+
+########################################################################
+
+_meta.script_name: init-db
+
+path: db/novo.db
+
+init-assets: db/vault/assets.yml
+init-accounts: db/vault/accounts.yml
+
+########################################################################
+
 

@@ -53,6 +53,13 @@ def assets_root() -> Path:
 
 
 
+@fig.autocomponent('data-root')
+def data_root() -> Path:
+	"""Returns the root directory of the assets."""
+	return repo_root() / 'novo-data'
+
+
+
 def load_db(path: Path | None = None):
 	# if path is not None and not path.exists():
 	# 	raise FileNotFoundError("Database file not found.")
