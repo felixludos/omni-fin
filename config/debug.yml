@@ -2,7 +2,7 @@
 #_meta.script_name: init-db
 ##
 ###_base: [local]
-_base: [vault]
+#_base: [vault]
 
 #db: db/vault/demo.db
 #db: novo/report.db
