@@ -58,18 +58,22 @@ class RecordBase:
 	_content_keys = None
 
 
+	def _table_row_data(self, raw: dict = None):
+		items = {self._table_keys.get(key, key): raw.get(key, getattr(self, key)) for key in self._content_keys}
+		items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
+		return items
+
+
 	def write(self, *, cursor=None, force=False):
 		if cursor is None:
 			cursor = self._conn.cursor()
 		if cursor is None:
 			raise ValueError('No connection provided')
 		if not self.exists or force:
-			items = {self._table_keys.get(key, key): getattr(self, key) for key in self._content_keys}
-			items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
+			items = self._table_row_data()
 			cmd = f'INSERT INTO {self._table_name} ({", ".join(items.keys())}) VALUES ({", ".join("?"*len(items))})'
 			cursor.execute(cmd, tuple(items.values()))
-			self.ID = cursor.lastrowid
-		return self.ID
+			return cursor.lastrowid
 
 
 	def update(self, *, cursor=None):
@@ -79,13 +83,11 @@ class RecordBase:
 			raise ValueError('No connection provided')
 		if not self.exists:
 			return self.write(cursor=cursor)
-
-		items = {self._table_keys.get(key, key): getattr(self, key) for key in self._content_keys}
-		items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
+		items = self._table_row_data()
 		key_info = ", ".join(f"{key} = ?" for key in items.keys())
 		cmd = f'UPDATE {self._table_name} SET {key_info} WHERE {self._id_key} = ?'
 		cursor.execute(cmd, tuple(items.values()))
-		return self.ID
+		return cursor.lastrowid
 
 
 	def _volatile(self):
@@ -146,6 +148,19 @@ class Record(RecordBase):
 		return self.ID is not None
 
 
+	def write(self, *, cursor=None, force=False):
+		ID = super().write(cursor=cursor, force=force)
+		if ID is not None and self.ID is None:
+			self.ID = ID
+		return ID
+
+
+	def update(self, *, cursor=None):
+		ID = super().update(cursor=cursor)
+		assert self.ID == ID, f'invalid ID: {ID} != {self.ID}'
+		return ID
+
+
 
 @dataclass
 class Report(Record):
@@ -168,7 +183,7 @@ class Report(Record):
 
 	_table_name = 'reports'
 	_content_keys = 'category', 'account', 'description', 'created'
-	_table_keys = {'id': 'ID', 'account': 'associated_account', 'created': 'created_at'}
+	_table_keys = {'ID': 'id', 'account': 'associated_account', 'created': 'created_at'}
 
 
 	@classmethod
@@ -223,7 +238,7 @@ class Asset(Reportable):
 	_table_name = 'assets'
 	_query_key = 'name'
 	_content_keys = 'name', 'category', 'description'
-	_table_keys = {'id': 'ID', 'name': 'asset_name', 'category': 'asset_type'}
+	_table_keys = {'ID': 'id', 'name': 'asset_name', 'category': 'asset_type'}
 
 
 	@classmethod
@@ -284,38 +299,24 @@ class Link(Reportable):
 	# id2: int = None
 
 	# _table_name = ''
+	_node_keys = None
+	_content_keys = None
 	_table_keys = {'category': 'link_type'}
 
 
-	def write(self, report: Report, *, cursor=None, force=False):
-		if cursor is None:
-			cursor = self._conn.cursor()
-		if cursor is None:
-			raise ValueError('No connection provided')
-		if not self.exists or force:
-			items = {self._table_keys.get(key, key): getattr(self, key) for key in self._content_keys}
-			items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
-			cmd = f'INSERT INTO {self._table_name} ({", ".join(items.keys())}) VALUES ({", ".join("?"*len(items))})'
-			cursor.execute(cmd, tuple(items.values()))
-			self.ID = cursor.lastrowid
-		return self.ID
-
-
-	def update(self, report: Report):
-
-		pass
-
-
-	pass
+	def _table_row_data(self, raw: dict = None):
+		keys = *self._node_keys, self._content_keys
+		items = {self._table_keys.get(key, key): raw.get(key, getattr(self, key)) for key in keys}
+		items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
+		return items
 
 
 
-@dataclass
-class TransactionLink(Link):
-	
-
-
-	pass
+class UndirectedLink(Link):
+	def _table_row_data(self, raw: dict = None):
+		data = super()._table_row_data(raw)
+		data['id1'], data['id2'] = sorted((data['id1'], data['id2']))
+		return data
 
 
 
@@ -365,7 +366,7 @@ class Account(Reportable, Tagged):
 	_tag_table_name = 'account_tags'
 	_query_key = 'name'
 	_content_keys = 'name', 'category', 'owner', 'description'
-	_table_keys = {'id': 'ID', 'name': 'account_name', 'category': 'account_type', 'owner': 'account_owner'}
+	_table_keys = {'ID': 'id', 'name': 'account_name', 'category': 'account_type', 'owner': 'account_owner'}
 
 
 	def __str__(self):
@@ -379,8 +380,6 @@ class Account(Reportable, Tagged):
 	@classmethod
 	def _from_row(cls, ID, name, category, owner, description, report):
 		return cls(ID=ID, name=name, category=category, owner=owner, description=description, report=report)
-
-
 
 Report.account = sub(Account)
 
@@ -398,7 +397,7 @@ class Statement(Reportable, Tagged):
 	_table_name = 'statements'
 	_tag_table_name = 'statement_tags'
 	_content_keys = 'date', 'account', 'balance', 'unit', 'description'
-	_table_keys = {'id': 'ID', 'date': 'dateof'}
+	_table_keys = {'ID': 'id', 'date': 'dateof'}
 
 
 	@classmethod
@@ -437,7 +436,7 @@ class Transaction(Reportable, Tagged):
 	_content_keys = ('date', 'location', 'sender', 'amount', 'unit',
 					 'receiver', 'received_amount', 'received_unit',
 					 'description', 'reference')
-	_table_keys = {'id': 'ID', 'date': 'dateof'}
+	_table_keys = {'ID': 'id', 'date': 'dateof'}
 
 
 	@classmethod
@@ -463,6 +462,17 @@ class Transaction(Reportable, Tagged):
 		return str(self)
 
 
+@dataclass
+class TransactionLink(Link):
+	txn1: Transaction = sub(Transaction)
+	txn2: Transaction = sub(Transaction)
+
+	_table_name = 'transaction_links'
+	_node_keys = 'txn1', 'txn2'
+	_content_keys = 'category'
+	_table_keys = {'category': 'link_type', 'txn1': 'id1', 'txn2': 'id2'}
+
+
 
 @dataclass
 class Verification(Reportable):
@@ -483,7 +493,7 @@ class Verification(Reportable):
 	_content_keys = ('txn', 'date', 'location', 'sender', 'amount', 'unit',
 					 'receiver', 'received_amount', 'received_unit',
 					 'description', 'reference')
-	_table_keys = {'id': 'ID', 'date': 'dateof'}
+	_table_keys = {'ID': 'id', 'date': 'dateof'}
 
 
 	@classmethod
