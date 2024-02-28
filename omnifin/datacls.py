@@ -102,21 +102,17 @@ class RecordBase:
 		if isinstance(query, str):
 			try:
 				query = int(query)
-			except TypeError:
+			except ValueError:
 				pass
 		assert isinstance(query, int) or cls._query_key is not None, f'Invalid query: {query!r}'
 		if cls._conn is None:
 			raise ConnectionNotSet()
-		raw = None
 		for key in [cls._id_key] if cls._query_key is None else [cls._query_key, cls._id_key]:
 			for value in [query, query.lower(), query.upper()] if isinstance(query, str) else [query]:
-				try:
-					raw = cls._conn.execute(f'SELECT * FROM {cls._table_name} WHERE {key} = ?',
-											(value,)).fetchone()
-				except sqlite3.OperationalError:
-					pass
-		if raw is not None:
-			return cls._from_row(*raw)
+				command = f'SELECT * FROM {cls._table_name} WHERE {cls._table_keys.get(key, key)} = ?'
+				raw = cls._conn.execute(command, (value,)).fetchone()
+				if raw is not None:
+					return cls._from_row(*raw)
 		raise NoRecordFound(query)
 
 
@@ -141,6 +137,11 @@ class RecordBase:
 
 @dataclass
 class Record(RecordBase):
+	def __init__(self, *, ID: int = None, **kwargs):
+		super().__init__(**kwargs)
+		self.ID = ID
+
+
 	ID: int = None
 
 	@property
@@ -192,18 +193,24 @@ class Report(Record):
 
 
 	def __str__(self):
-		return (f'{self._volatile()}{colorize(self.category, "cyan")}'
-				f'[{humanize.naturaldelta(datetime.now() - self.created)} ago]')
+		accinfo = '' if self.account is None else f' (account={self.account})'
+		return (f'{self._volatile()}{colorize(self.category, "cyan")} '
+				f'{humanize.naturaldelta(datetime.now() - self.created)} ago{accinfo}')
 
 
 	def __repr__(self):
-		return (f'{self.__class__.__name__}{self._volatile()}({colorize(self.category, "cyan")}, '
-				f'{self.created.strftime("%y-%m-%d %H:%M:%S")})')
-
+		# return (f'{self.__class__.__name__}{self._volatile()}({colorize(self.category, "cyan")}, '
+		# 		f'{self.created.strftime("%y-%m-%d %H:%M:%S")})')
+		return str(self)
 
 
 @dataclass
 class Reportable(RecordBase):
+	def __init__(self, *, report: Report = None, **kwargs):
+		super().__init__(**kwargs)
+		self.report = report
+
+
 	report: Report = sub(Report)
 
 
@@ -223,7 +230,7 @@ class Reportable(RecordBase):
 
 
 @dataclass
-class Asset(Reportable):
+class Asset(Record, Reportable):
 	def __init__(self, name: str = None, *, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -251,11 +258,12 @@ class Asset(Reportable):
 
 
 	def __repr__(self):
-		return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "green")})'
+		# return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "green")})'
+		return str(self)
 
 
 
-class Tag(Reportable):
+class Tag(Record, Reportable):
 	def __init__(self, name: str = None, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -283,20 +291,14 @@ class Tag(Reportable):
 
 
 	def __repr__(self):
-		return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "yellow")})'
-
-
-
-class Linkable(Reportable):
-	pass
+		# return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "yellow")})'
+		return str(self)
 
 
 
 @dataclass
-class Link(Reportable):
+class Link(Record, Reportable):
 	category: str = None
-	# id1: int = None
-	# id2: int = None
 
 	# _table_name = ''
 	_node_keys = None
@@ -311,12 +313,82 @@ class Link(Reportable):
 		return items
 
 
+	def all_links(self, category: str = None):
+		if category is None:
+			query = f'SELECT * FROM {self._table_name}'
+			cursor = self._conn.execute(query)
+		else:
+			query = f'SELECT * FROM {self._table_name} WHERE {self._table_keys["category"]} = ?'
+			cursor = self._conn.execute(query, (category,))
+		for row in cursor.fetchall():
+			yield self._from_row(*row)
 
-class UndirectedLink(Link):
+
+
+class Linkable(Reportable):
+	_link_type: Type[Link] = None
+
+	def get_links(self, category: str = None):
+		raise NotImplementedError
+
+	def add_links(self, report: Report, *links: Link, category: str = None, cursor=None):
+		raise NotImplementedError
+
+
+
+class Directed(Link):
+	@classmethod
+	def children_of(cls, record: Linkable, category: str = None):
+		query = (f'SELECT * FROM {cls._table_name} WHERE id1 = ?' if category is None
+				 else f'SELECT * FROM {cls._table_name} WHERE id1 = ? AND {cls._table_keys["category"]} = ?')
+		cursor = cls._conn.execute(query, (record.ID,) if category is None else (record.ID, category))
+		for row in cursor.fetchall():
+			yield cls._from_row(*row)
+
+
+	@classmethod
+	def parents_of(cls, record: Linkable, category: str = None):
+		query = (f'SELECT * FROM {cls._table_name} WHERE id2 = ?' if category is None
+				 else f'SELECT * FROM {cls._table_name} WHERE id2 = ? AND {cls._table_keys["category"]} = ?')
+		cursor = cls._conn.execute(query, (record.ID,) if category is None else (record.ID, category))
+		for row in cursor.fetchall():
+			yield cls._from_row(*row)
+
+
+
+class Undirected(Link):
 	def _table_row_data(self, raw: dict = None):
 		data = super()._table_row_data(raw)
 		data['id1'], data['id2'] = sorted((data['id1'], data['id2']))
 		return data
+
+
+	@classmethod
+	def of(cls, record: Linkable, category: str = None):
+		query = (f'SELECT * FROM {cls._table_name} WHERE (id1 = ? OR id2 = ?)' if category is None
+				 else f'SELECT * FROM {cls._table_name} WHERE (id1 = ? OR id2 = ?) '
+					  f'AND {cls._table_keys["category"]} = ?')
+		cursor = cls._conn.execute(query, (record.ID, record.ID) if category is None
+											else (record.ID, record.ID, category))
+		for row in cursor.fetchall():
+			yield cls._from_row(*row)
+
+
+	@classmethod
+	def cluster(cls, record: Linkable, category: str = None):
+		_completed = set()
+		yield from cls._cluster(_completed, record, category=category)
+
+
+	@classmethod
+	def _cluster(cls, _completed: set, record: Linkable, category: str = None):
+		_completed.add(record.ID)
+		for link in cls.of(record, category):
+			rec1, rec2 = getattr(link, cls._node_keys[0]), getattr(link, cls._node_keys[1])
+			other = rec2 if rec1.ID == record.ID else rec1
+			if other not in _completed:
+				yield from cls.cluster(_completed, other, category)
+		yield record
 
 
 
@@ -347,7 +419,7 @@ class Tagged(Record):
 
 
 @dataclass
-class Account(Reportable, Tagged):
+class Account(Tagged, Linkable, Record, Reportable):
 	def __init__(self, name: str = None, *, category: str = None, owner: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -374,7 +446,8 @@ class Account(Reportable, Tagged):
 
 
 	def __repr__(self):
-		return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "blue")})'
+		# return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "blue")})'
+		return str(self)
 
 
 	@classmethod
@@ -386,7 +459,7 @@ Report.account = sub(Account)
 
 
 @dataclass
-class Statement(Reportable, Tagged):
+class Statement(Linkable, Tagged):
 	date: datelike = None
 	account: Account = sub(Account)
 	balance: float = None
@@ -401,13 +474,14 @@ class Statement(Reportable, Tagged):
 
 
 	@classmethod
-	def _from_row(cls, ID, *data):
-		return cls(ID=ID, date=data[0], account=data[1], balance=data[2], unit=data[3], description=data[4],
-				   report=data[5])
+	def _from_row(cls, ID, date, account, balance, unit, description, report):
+		return cls(ID=ID, date=date, account=account, balance=balance, unit=unit, description=description,
+				   report=report)
 
 
 	def __str__(self):
-		return f'<{self._volatile()}{self.date.strftime("%y-%m-%d")} {self.account} :: {self.balance:.2f} {self.unit}>'
+		return (f'[{self._volatile() or " "}{self.date.strftime("%d-%b%y")} {self.account} '
+				f':: {self.balance:.2f} {self.unit} ]')
 
 
 	def __repr__(self):
@@ -416,9 +490,44 @@ class Statement(Reportable, Tagged):
 		return str(self)
 
 
+	def get_links(self, category: str = None):
+		for link in self._link_type.cluster(self, category=category):
+			yield link.state2 if link.state1 == self else link.state1
+
+
+	def add_links(self, report: Report, *statements: 'Statement', category: str = None, cursor=None):
+		assert report.exists, 'Report not written to database'
+		assert self.exists, 'Transaction not written to database'
+		if cursor is None:
+			cursor = self._conn.cursor()
+		existing = set(self.get_links(category))
+		new = []
+		for other in statements:
+			if other not in existing:
+				self._link_type(category=category, state1=self, state2=other, report=report).write(cursor=cursor)
+				new.append(other)
+		return new
+
 
 @dataclass
-class Transaction(Reportable, Tagged):
+class StatementLink(Undirected):
+	state1: Statement = sub(Statement)
+	state2: Statement = sub(Statement)
+
+	_table_name = 'statement_links'
+	_node_keys = 'state1', 'state2'
+	_content_keys = 'category'
+	_table_keys = {'category': 'link_type', 'state1': 'id1', 'state2': 'id2'}
+
+	@classmethod
+	def _from_row(cls, state1, state2, category, report):
+		return cls(state1=state1, state2=state2, category=category, report=report)
+
+Statement._link_type = StatementLink
+
+
+@dataclass
+class Transaction(Linkable, Tagged):
 	date: datelike = None
 	location: str = None
 	sender: Account = sub(Account)
@@ -440,17 +549,18 @@ class Transaction(Reportable, Tagged):
 
 
 	@classmethod
-	def _from_row(cls, ID, *data):
-		return cls(ID=ID, date=data[0], location=data[1], sender=data[2], amount=data[3], unit=data[4],
-					receiver=data[5], received_amount=data[6], received_unit=data[7], description=data[8],
-					reference=data[9], report=data[10])
+	def _from_row(cls, ID, date, location, sender, amount, unit, receiver, received_amount, received_unit,
+				  description, reference, report):
+		return cls(ID=ID, date=date, location=location, sender=sender, amount=amount, unit=unit,
+				   receiver=receiver, received_amount=received_amount, received_unit=received_unit,
+				   description=description, reference=reference, report=report)
 
 
 	def __str__(self):
-		return (f'<{self._volatile()}{self.date.strftime("%y-%m-%d")} {self.amount:.2f} {self.unit} '
-				f'{self.sender} -> {self.receiver}>') if self.received_amount is None else (
-			f'<{self._volatile()}{self.date.strftime("%y-%m-%d")} {self.amount:.2f} {self.unit} '
-			f'{self.sender} -> {self.received_amount:.2f} {self.received_unit} {self.receiver}>')
+		return (f'[{self._volatile() or " "}{self.date.strftime("%d-%b%y")} {self.amount:.2f} {self.unit} '
+				f'{self.sender} -> {self.receiver} ]') if self.received_amount is None else (
+			f'[{self._volatile() or " "}{self.date.strftime("%d-%b%y")} {self.amount:.2f} {self.unit} '
+			f'{self.sender} -> {self.received_amount:.2f} {self.received_unit} {self.receiver} ]')
 
 
 	def __repr__(self):
@@ -462,8 +572,27 @@ class Transaction(Reportable, Tagged):
 		return str(self)
 
 
+	def get_links(self, category: str = None):
+		for link in self._link_type.cluster(self, category=category):
+			yield link.txn2 if link.txn1 == self else link.txn1
+
+
+	def add_links(self, report: Report, *links: Link, category: str = None, cursor=None):
+		assert report.exists, 'Report not written to database'
+		assert self.exists, 'Transaction not written to database'
+		if cursor is None:
+			cursor = self._conn.cursor()
+		existing = set(self.get_links(category))
+		new = []
+		for other in links:
+			if other not in existing:
+				self._link_type(txn1=self, txn2=other, category=category, report=report).write(cursor=cursor)
+				new.append(other)
+		return new
+
+
 @dataclass
-class TransactionLink(Link):
+class TransactionLink(Undirected):
 	txn1: Transaction = sub(Transaction)
 	txn2: Transaction = sub(Transaction)
 
@@ -472,10 +601,15 @@ class TransactionLink(Link):
 	_content_keys = 'category'
 	_table_keys = {'category': 'link_type', 'txn1': 'id1', 'txn2': 'id2'}
 
+	@classmethod
+	def _from_row(cls, txn1, txn2, category, report):
+		return cls(txn1=txn1, txn2=txn2, category=category, report=report)
+
+Transaction._link_type = TransactionLink
 
 
 @dataclass
-class Verification(Reportable):
+class Verification(Reportable, Record):
 	txn: Transaction = None
 	date: datelike = None
 	location: str = None
@@ -505,10 +639,10 @@ class Verification(Reportable):
 
 
 	def __str__(self):
-		return (f'<{self._volatile()}{self.date.strftime("%y-%m-%d")} {self.amount:.2f} {self.unit} '
-				f'{self.sender} -> {self.receiver}>') if self.received_amount is None else (
-			f'<{self._volatile()}{self.date.strftime("%y-%m-%d")} {self.amount:.2f} {self.unit} '
-			f'{self.sender} -> {self.received_amount:.2f} {self.received_unit} {self.receiver}>')
+		return (f'[{self._volatile() or " "}{self.date.strftime("%d-%b%y")} {self.amount:.2f} {self.unit} '
+				f'{self.sender} -> {self.receiver} ]') if self.received_amount is None else (
+			f'[{self._volatile() or " "}{self.date.strftime("%d-%b%y")} {self.amount:.2f} {self.unit} '
+			f'{self.sender} -> {self.received_amount:.2f} {self.received_unit} {self.receiver} ]')
 
 
 	def __repr__(self):
