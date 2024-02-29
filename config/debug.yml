@@ -71,7 +71,11 @@ init-tags: db/vault/tags.yml
 
 _meta.script_name: txn
 
-_base: [b99-gu]
+_base: [costco]
+
+account: costco-ma
+
+path: extra/2023/costco-ma.CSV
 
 y: yes
 

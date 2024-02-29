@@ -161,6 +161,17 @@ def init_db(conn: sqlite3.Connection):
     );
     """)
     c.execute("""
+    CREATE TABLE IF NOT EXISTS verification_tags (
+        id INTEGER,
+        tag_id INTEGER,
+        report INTEGER NOT NULL,
+        FOREIGN KEY (id) REFERENCES verifications(id),
+        FOREIGN KEY (tag_id) REFERENCES tags(id),
+        FOREIGN KEY (report) REFERENCES reports(id),
+        PRIMARY KEY(id, tag_id)
+    );
+    """)
+    c.execute("""
     CREATE TABLE IF NOT EXISTS account_tags (
         id INTEGER,
         tag_id INTEGER,

@@ -112,6 +112,8 @@ class RecordBase:
 	def find(cls, query: str | int):
 		if isinstance(query, cls):
 			return query
+		if query is None:
+			return
 		assert not isinstance(query, Record), f'Invalid query: {query!r}'
 		if isinstance(query, str):
 			try:
@@ -127,7 +129,7 @@ class RecordBase:
 				raw = cls._conn.execute(command, (value,)).fetchone()
 				if raw is not None:
 					return cls._from_row(*raw)
-		raise NoRecordFound(query)
+		raise NoRecordFound(f'No {cls.__name__} found for {query!r}')
 
 
 	@classmethod
@@ -645,7 +647,7 @@ Transaction._link_type = TransactionLink
 
 
 @dataclass
-class Verification(Reportable, Record):
+class Verification(Reportable, Tagged):
 	txn: Transaction = None
 	date: datelike = None
 	location: str = None
@@ -660,6 +662,7 @@ class Verification(Reportable, Record):
 
 
 	_table_name = 'verifications'
+	_tag_table_name = 'verification_tags'
 	_content_keys = ('txn', 'date', 'location', 'sender', 'amount', 'unit',
 					 'receiver', 'received_amount', 'received_unit',
 					 'description', 'reference')

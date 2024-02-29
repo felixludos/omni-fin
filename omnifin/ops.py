@@ -51,7 +51,7 @@ def create_db(cfg: fig.Configuration):
 		items = load_yaml(assets_path)
 		cfg.print(f'Loaded {len(items)} assets from {assets_path}.')
 		for item in items:
-			Asset(**item).write(report)
+			Asset(**item).write_missing(report)
 		# conn.commit()
 
 	accounts_path = get_path(cfg, path_key='init-accounts', root_key='root')
@@ -59,7 +59,7 @@ def create_db(cfg: fig.Configuration):
 		items = load_yaml(accounts_path)
 		cfg.print(f'Loaded {len(items)} accounts from {accounts_path}.')
 		for item in items:
-			Account(**item).write(report)
+			Account(**item).write_missing(report)
 		# conn.commit()
 
 	tags_path = get_path(cfg, path_key='init-tags', root_key='root')
@@ -67,7 +67,7 @@ def create_db(cfg: fig.Configuration):
 		items = load_yaml(tags_path)
 		cfg.print(f'Loaded {len(items)} tags from {tags_path}.')
 		for item in items:
-			Tag(**item).write(report)
+			Tag(**item).write_missing(report)
 		# conn.commit()
 
 	cfg.print('Database setup.')
