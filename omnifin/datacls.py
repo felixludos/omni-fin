@@ -59,6 +59,7 @@ class RecordBase:
 
 
 	def _table_row_data(self, raw: dict = None):
+		raw = raw or {}
 		items = {self._table_keys.get(key, key): raw.get(key, getattr(self, key)) for key in self._content_keys}
 		items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
 		return items
@@ -199,9 +200,10 @@ class Report(Record):
 
 
 	def __repr__(self):
-		# return (f'{self.__class__.__name__}{self._volatile()}({colorize(self.category, "cyan")}, '
-		# 		f'{self.created.strftime("%y-%m-%d %H:%M:%S")})')
-		return str(self)
+		accinfo = '' if self.account is None else f', account={self.account.name}'
+		return (f'{self.__class__.__name__}{"*", self._volatile(), ""}({self.category}, '
+				f'{(self.created or datetime.now()).strftime("%y-%m-%d %H:%M:%S")}{accinfo})')
+		# return str(self)
 
 
 @dataclass
@@ -230,7 +232,7 @@ class Reportable(RecordBase):
 
 
 @dataclass
-class Asset(Record, Reportable):
+class Asset(Reportable, Record):
 	def __init__(self, name: str = None, *, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -258,12 +260,12 @@ class Asset(Record, Reportable):
 
 
 	def __repr__(self):
-		# return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "green")})'
-		return str(self)
+		return f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.name})'
+		# return str(self)
 
 
 
-class Tag(Record, Reportable):
+class Tag(Reportable, Record):
 	def __init__(self, name: str = None, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -291,13 +293,13 @@ class Tag(Record, Reportable):
 
 
 	def __repr__(self):
-		# return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "yellow")})'
-		return str(self)
+		return f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.name})'
+		# return str(self)
 
 
 
 @dataclass
-class Link(Record, Reportable):
+class Link(Reportable, Record):
 	category: str = None
 
 	# _table_name = ''
@@ -406,7 +408,8 @@ class Tagged(Record):
 			tag = Tag.find(tag)
 			if tag not in existing:
 				assert tag.exists, f'No tag found for {tag}'
-				cursor.execute(f'INSERT INTO {self._tag_table_name} (id, tag_id) VALUES (?, ?)', (self.ID, tag.ID))
+				cursor.execute(f'INSERT INTO {self._tag_table_name} (id, tag_id) VALUES (?, ?)',
+							   (self.ID, tag.ID))
 
 
 	def tags(self):
@@ -419,7 +422,7 @@ class Tagged(Record):
 
 
 @dataclass
-class Account(Tagged, Linkable, Record, Reportable):
+class Account(Linkable, Tagged):
 	def __init__(self, name: str = None, *, category: str = None, owner: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -446,8 +449,7 @@ class Account(Tagged, Linkable, Record, Reportable):
 
 
 	def __repr__(self):
-		# return f'{self.__class__.__name__}{self._volatile()}({colorize(self.name, "blue")})'
-		return str(self)
+		return f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.name})'
 
 
 	@classmethod
@@ -485,9 +487,9 @@ class Statement(Linkable, Tagged):
 
 
 	def __repr__(self):
-		# return (f'{self.__class__.__name__}{self._volatile()}({self.date.strftime("%y-%m-%d")}, '
-		# 		f'{self.account}, {self.balance:.2f}, {self.unit})')
-		return str(self)
+		return (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
+				f'{self.account.name}, {self.balance:.2f}, {self.unit.name})')
+		# return str(self)
 
 
 	def get_links(self, category: str = None):
@@ -564,12 +566,11 @@ class Transaction(Linkable, Tagged):
 
 
 	def __repr__(self):
-		# return (f'{self.__class__.__name__}{self._volatile()}({self.date.strftime("%y-%m-%d")}, '
-		# 		f'{self.amount:.2f}, {self.unit}, {self.sender}, {self.receiver})') if self.received_amount is None \
-		# 	else (f'{self.__class__.__name__}{self._volatile()}({self.date.strftime("%y-%m-%d")}, '
-		# 	f'{self.amount:.2f}, {self.unit}, {self.sender}, '
-		# 	f'{self.received_amount:.2f}, {self.received_unit}, {self.receiver})')
-		return str(self)
+		return (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
+				f'{self.amount:.2f}, {self.unit}, {self.sender.name}, {self.receiver.name})') if self.received_amount is None \
+			else (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
+			f'{self.amount:.2f}, {self.unit.name}, {self.sender.name}, '
+			f'{self.received_amount:.2f}, {self.received_unit.name}, {self.receiver.name})')
 
 
 	def get_links(self, category: str = None):

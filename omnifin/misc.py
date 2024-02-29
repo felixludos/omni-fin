@@ -1,8 +1,22 @@
 from pathlib import Path
-import sqlite3
-from omnibelt import load_json, save_json
+import sqlite3, json
+from omnibelt import load_json, save_json, load_csv_rows, load_yaml
 import omnifig as fig
 
+
+
+def load_item_file(path):
+	suffix = path.suffix.lower()
+	if suffix == '.csv':
+		return list(load_csv_rows(path))
+	elif suffix == '.json':
+		return load_json(path)
+	elif suffix == '.yaml' or suffix == '.yml':
+		return load_yaml(path)
+	elif suffix == '.jsonl':
+		return [json.loads(line) for line in path.open('r')]
+
+	raise FileNotFoundError(f'Unknown file type: {path}')
 
 
 

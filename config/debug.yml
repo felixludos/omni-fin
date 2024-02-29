@@ -59,12 +59,21 @@
 
 ########################################################################
 
-_meta.script_name: init-db
+#_meta.script_name: init-db
 
-path: db/novo.db
+db: db/novo.db
 
 init-assets: db/vault/assets.yml
 init-accounts: db/vault/accounts.yml
+
+########################################################################
+
+_meta.script_name: txn
+
+path: extra/2023/amazon.CSV
+
+parser._type: amazon
+account: amazon
 
 ########################################################################
 
