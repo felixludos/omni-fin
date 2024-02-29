@@ -3,7 +3,7 @@ from .imports import *
 from .misc import get_path, load_db, load_item_file
 from .building import init_db
 from .parsers import Parser
-from .datacls import Record, Asset, Account, Report
+from .datacls import Record, Asset, Account, Report, Tag
 
 
 
@@ -62,6 +62,14 @@ def create_db(cfg: fig.Configuration):
 			Account(**item).write(report)
 		# conn.commit()
 
+	tags_path = get_path(cfg, path_key='init-tags', root_key='root')
+	if tags_path is not None and tags_path.exists():
+		items = load_yaml(tags_path)
+		cfg.print(f'Loaded {len(items)} tags from {tags_path}.')
+		for item in items:
+			Tag(**item).write(report)
+		# conn.commit()
+
 	cfg.print('Database setup.')
 	conn.commit()
 	return conn
@@ -73,9 +81,10 @@ def add_transactions(cfg: fig.Configuration):
 	conn = form_connection(cfg)
 	report = create_report(cfg)
 
-	account = cfg.pull('account', None)
-	if account is not None:
-		account = Account.find(account)
+	account = None
+	accountname = cfg.pull('account', None)
+	if accountname is not None:
+		account = Account.find(accountname)
 	# cfg.print(f'Using account: {account}')
 
 	report.account = account
@@ -88,17 +97,21 @@ def add_transactions(cfg: fig.Configuration):
 
 	cfg.print(f'Loaded {len(items)} items from {path}')
 
+	cfg.push('parser._type', accountname, silent=True, overwrite=False)
 	parser: Parser = cfg.pull('parser')
-	cfg.print(f'Using parser: {parser}')
+	# cfg.print(f'Using parser: {parser}')
 
-	parser.prepare(account, items)
+	concepts = parser.prepare(account, items)
+	for concept in concepts:
+		concept.write_missing(report)
 
 	records = []
+	tags = {}
 
 	pbar = cfg.pull('pbar', True)
 	itr = tqdm(items) if pbar else items
 	for item in itr:
-		record = parser.parse(item)
+		record = parser.parse(item, tags)
 		if record is not None:
 			# record.write(report)
 			if isinstance(record, list):
@@ -121,9 +134,13 @@ def add_transactions(cfg: fig.Configuration):
 	for rec in records:
 		rec.write(report)
 
+	for tag, recs in tags.items():
+		for rec in recs:
+			rec.add_tags(report, tag)
+
 	conn.commit()
 
-	cfg.print('Transactions added.')
+	cfg.print(f'{len(records)} records saved.')
 	return records
 
 

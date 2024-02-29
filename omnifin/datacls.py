@@ -6,19 +6,24 @@ from .errors import ConnectionNotSet, NoRecordFound
 
 
 class sub:
-	def __init__(self, record_type: Type['Record']):
+	def __init__(self, record_type: Type['Record'], name: str = None):
 		self.record_type = record_type
-		self.value = None
+		self.name = name
+
+	def __set_name__(self, owner, name):
+		self.name = name
 
 	def __get__(self, instance, owner):
-		value = self.value
+		# if self.name is None:
+		# 	raise AttributeError('No name set')
+		value = getattr(instance, f'_{self.name}', None)
 		if isinstance(value, (int, str)):
 			value = self.record_type.find(value)
-			self.value = value
+			setattr(instance, f'_{self.name}', value)
 		return value
 
 	def __set__(self, instance, value):
-		self.value = value
+		setattr(instance, f'_{self.name}', value)
 
 
 class RecordBase:
@@ -95,6 +100,14 @@ class RecordBase:
 		return '' if self.exists else colorize('*', 'red')
 
 
+	def __eq__(self, other):
+		return self.ID == other.ID
+
+
+	def __hash__(self):
+		return hash(self.ID)
+
+
 	@classmethod
 	def find(cls, query: str | int):
 		if isinstance(query, cls):
@@ -141,7 +154,6 @@ class Record(RecordBase):
 	def __init__(self, *, ID: int = None, **kwargs):
 		super().__init__(**kwargs)
 		self.ID = ID
-
 
 	ID: int = None
 
@@ -201,7 +213,7 @@ class Report(Record):
 
 	def __repr__(self):
 		accinfo = '' if self.account is None else f', account={self.account.name}'
-		return (f'{self.__class__.__name__}{"*", self._volatile(), ""}({self.category}, '
+		return (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.category}, '
 				f'{(self.created or datetime.now()).strftime("%y-%m-%d %H:%M:%S")}{accinfo})')
 		# return str(self)
 
@@ -214,6 +226,12 @@ class Reportable(RecordBase):
 
 
 	report: Report = sub(Report)
+
+
+	def _table_row_data(self, raw: dict = None):
+		items = super()._table_row_data(raw)
+		items['report'] = self.report.ID
+		return items
 
 
 	def write(self, report: Report, *, cursor=None, force=False):
@@ -231,8 +249,24 @@ class Reportable(RecordBase):
 
 
 
+class Concept(Reportable):
+	def write_missing(self, report: Report, update: bool = False, **kwargs):
+		if self.exists is None:
+			return
+		assert self._query_key is not None, 'No query key set'
+		try:
+			existing = self.find(getattr(self, self._query_key))
+		except NoRecordFound:
+			return self.write(report, **kwargs)
+		if update:
+			self.update(report, **kwargs)
+		else:
+			self.ID = existing.ID
+
+
+
 @dataclass
-class Asset(Reportable, Record):
+class Asset(Concept, Record):
 	def __init__(self, name: str = None, *, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -265,7 +299,7 @@ class Asset(Reportable, Record):
 
 
 
-class Tag(Reportable, Record):
+class Tag(Concept, Record):
 	def __init__(self, name: str = None, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -403,13 +437,13 @@ class Tagged(Record):
 		assert self.ID is not None, 'Transaction not written to database'
 		if cursor is None:
 			cursor = self._conn.cursor()
-		existing = set(self.tags())
+		existing = set(t.name for t in self.tags())
 		for tag in tags:
 			tag = Tag.find(tag)
-			if tag not in existing:
+			if tag.name not in existing:
 				assert tag.exists, f'No tag found for {tag}'
-				cursor.execute(f'INSERT INTO {self._tag_table_name} (id, tag_id) VALUES (?, ?)',
-							   (self.ID, tag.ID))
+				cursor.execute(f'INSERT INTO {self._tag_table_name} (id, tag_id, report) VALUES (?, ?, ?)',
+							   (self.ID, tag.ID, report.ID))
 
 
 	def tags(self):
@@ -422,7 +456,7 @@ class Tagged(Record):
 
 
 @dataclass
-class Account(Linkable, Tagged):
+class Account(Linkable, Concept, Tagged):
 	def __init__(self, name: str = None, *, category: str = None, owner: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -456,7 +490,7 @@ class Account(Linkable, Tagged):
 	def _from_row(cls, ID, name, category, owner, description, report):
 		return cls(ID=ID, name=name, category=category, owner=owner, description=description, report=report)
 
-Report.account = sub(Account)
+Report.account = sub(Account, 'account')
 
 
 
@@ -567,10 +601,11 @@ class Transaction(Linkable, Tagged):
 
 	def __repr__(self):
 		return (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
-				f'{self.amount:.2f}, {self.unit}, {self.sender.name}, {self.receiver.name})') if self.received_amount is None \
+				f'{self.amount:.2f}, {getattr(self.unit, "name", None)}, {getattr(self.sender, "name", None)}, {getattr(self.receiver, "name", None)})') \
+			if self.received_amount is None \
 			else (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
-			f'{self.amount:.2f}, {self.unit.name}, {self.sender.name}, '
-			f'{self.received_amount:.2f}, {self.received_unit.name}, {self.receiver.name})')
+			f'{self.amount:.2f}, {getattr(self.unit, "name", None)}, {getattr(self.sender, "name", None)}, '
+			f'{self.received_amount:.2f}, {getattr(self.received_unit, "name", None)}, {getattr(self.receiver, "name", None)})')
 
 
 	def get_links(self, category: str = None):
@@ -647,11 +682,18 @@ class Verification(Reportable, Record):
 
 
 	def __repr__(self):
+		return (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
+				f'{self.amount:.2f}, {getattr(self.unit, "name", None)}, {getattr(self.sender, "name", None)}, {getattr(self.receiver, "name", None)})') \
+			if self.received_amount is None \
+			else (f'{self.__class__.__name__}{"*" if self._volatile() else ""}({self.date.strftime("%d-%b%y")}, '
+			f'{self.amount:.2f}, {getattr(self.unit, "name", None)}, {getattr(self.sender, "name", None)}, '
+			f'{self.received_amount:.2f}, {getattr(self.received_unit, "name", None)}, {getattr(self.receiver, "name", None)})')
+
 		# return (f'{self.__class__.__name__}{self._volatile()}({self.date.strftime("%y-%m-%d")}, '
 		# 		f'{self.amount:.2f}, {self.unit}, {self.sender}, {self.receiver})') if self.received_amount is None \
 		# 	else (f'{self.__class__.__name__}{self._volatile()}({self.date.strftime("%y-%m-%d")}, '
 		# 	f'{self.amount:.2f}, {self.unit}, {self.sender}, '
 		# 	f'{self.received_amount:.2f}, {self.received_unit}, {self.receiver})')
-		return str(self)
+		# return str(self)
 
 
