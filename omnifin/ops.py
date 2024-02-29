@@ -93,13 +93,12 @@ def add_transactions(cfg: fig.Configuration):
 
 	path = get_path(cfg, path_key='path', root_key='root')
 
-	items = load_item_file(path)
-
-	cfg.print(f'Loaded {len(items)} items from {path}')
-
 	cfg.push('parser._type', accountname, silent=True, overwrite=False)
 	parser: Parser = cfg.pull('parser')
-	# cfg.print(f'Using parser: {parser}')
+
+	items = parser.load_items(path)
+
+	cfg.print(f'Loaded {len(items)} items from {path}')
 
 	concepts = parser.prepare(account, items)
 	for concept in concepts:

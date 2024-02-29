@@ -4,6 +4,11 @@ from omnibelt import load_json, save_json, load_csv_rows, load_yaml
 import omnifig as fig
 
 
+def format_amount(amount: str) -> float:
+	amount = amount.replace(' ', '').replace('�','').replace('�', '').replace(',', '.')
+	amount = abs(float(amount))
+	return amount
+
 
 def load_item_file(path):
 	suffix = path.suffix.lower()
@@ -57,6 +62,11 @@ def format_location(*, city: str = None, location: str = None, cat: str = None) 
 def repo_root() -> Path:
 	"""Returns the root directory of the repository."""
 	return Path(__file__).parent.parent
+
+
+_root = repo_root() / 'extra' / 'acc-config'
+if _root.exists():
+	fig.get_current_project().register_config_dir(_root)
 
 
 

@@ -71,9 +71,7 @@ init-tags: db/vault/tags.yml
 
 _meta.script_name: txn
 
-path: extra/2023/amazon.CSV
-
-account: amazon
+_base: [b99-gu]
 
 y: yes
 
