@@ -31,7 +31,7 @@ def create_report(cfg: fig.Configuration, desc: str = None) -> Report:
 					# account=cfg.pull('account', None),
 					description=cfg.pull('description', None) if desc is None else desc)
 
-	cfg.print(f'Using report: {report}.')
+	# cfg.print(f'Using report: {report}.')
 	return report
 
 
@@ -43,6 +43,7 @@ def create_db(cfg: fig.Configuration):
 	# conn.commit()
 
 	report = create_report(cfg)
+	cfg.print(f'Using report: {report}.')
 	report.write()
 
 	assets_path = get_path(cfg, path_key='init-assets', root_key='root')
@@ -75,10 +76,11 @@ def add_transactions(cfg: fig.Configuration):
 	account = cfg.pull('account', None)
 	if account is not None:
 		account = Account.find(account)
-	cfg.print(f'Using account: {account}')
+	# cfg.print(f'Using account: {account}')
 
 	report.account = account
 	report.write()
+	cfg.print(f'Using report: {report}.')
 
 	path = get_path(cfg, path_key='path', root_key='root')
 
