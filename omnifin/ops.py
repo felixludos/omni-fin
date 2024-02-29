@@ -84,7 +84,7 @@ def add_transactions(cfg: fig.Configuration):
 
 	items = load_item_file(path)
 
-	cfg.print(f'Loaded {len(items)} items from {path}.')
+	cfg.print(f'Loaded {len(items)} items from {path}')
 
 	parser: Parser = cfg.pull('parser')
 	cfg.print(f'Using parser: {parser}')
