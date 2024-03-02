@@ -67,18 +67,20 @@ init-assets: db/vault/assets.yml
 init-accounts: db/vault/accounts.yml
 init-tags: db/vault/tags.yml
 
+shortcut-path: db/vault/shortcuts.yml
+
 ########################################################################
 
 _meta.script_name: txn
 
-_base: [costco]
+_base: [heritage]
 
-account: costco-ma
+account: ibkr-gu
 
-path: extra/2023/costco-ma.CSV
+path: extra/2023/ibkr-gu.csv
+
+parser._type: ibkr
 
 y: yes
 
 ########################################################################
-
-

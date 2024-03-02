@@ -1,3 +1,5 @@
+import io
+
 from .imports import *
 
 from .misc import get_path, load_db, load_item_file
@@ -16,6 +18,13 @@ def form_connection(cfg: fig.Configuration):
 
 	conn = load_db(path)
 	Record.set_conn(conn)
+
+	shortcut_path = get_path(cfg, path_key='shortcut-path', root_key='root')
+	if shortcut_path is not None:
+		shortcuts = load_yaml(shortcut_path)
+		Asset.update_shortcuts(shortcuts.get('assets', {}))
+		Account.update_shortcuts(shortcuts.get('accounts', {}))
+
 	return conn
 
 
@@ -141,6 +150,9 @@ def add_transactions(cfg: fig.Configuration):
 
 	cfg.print(f'{len(records)} records saved.')
 	return records
+
+
+
 
 
 

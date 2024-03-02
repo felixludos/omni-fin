@@ -267,8 +267,24 @@ class Concept(Reportable):
 
 
 
+class Shortcutable(Concept):
+	_shortcuts = None
+	def __init_subclass__(cls, **kwargs):
+		super().__init_subclass__(**kwargs)
+		cls._shortcuts = {}
+
+	@classmethod
+	def update_shortcuts(cls, shortcuts: dict):
+		cls._shortcuts.update(shortcuts)
+
+	@classmethod
+	def find(cls, query: str | int):
+		return super().find(cls._shortcuts.get(query, query))
+
+
+
 @dataclass
-class Asset(Concept, Record):
+class Asset(Shortcutable, Record):
 	def __init__(self, name: str = None, *, category: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
@@ -458,7 +474,7 @@ class Tagged(Record):
 
 
 @dataclass
-class Account(Linkable, Concept, Tagged):
+class Account(Linkable, Shortcutable, Tagged):
 	def __init__(self, name: str = None, *, category: str = None, owner: str = None, description: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self.name = name
