@@ -3,8 +3,19 @@ import sqlite3, json
 from omnibelt import load_json, save_json, load_csv_rows, load_yaml
 import omnifig as fig
 
+def format_regular_amount(val: str):
+	assert val is not None
+	if isinstance(val, (int, float)):
+		return float(val)
+	val = val.strip().replace(',', '')
+	try:
+		return float(val)
+	except ValueError:
+		raise ValueError(f"Could not convert {val} to number")
 
-def format_amount(amount: str) -> float:
+
+
+def format_european_amount(amount: str) -> float:
 	if isinstance(amount, (int, float)):
 		return float(amount)
 	amount = amount.replace(' ', '').replace('�','').replace('�', '').replace(',', '.')

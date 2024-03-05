@@ -73,13 +73,12 @@ shortcut-path: db/vault/shortcuts.yml
 
 _meta.script_name: txn
 
-_base: [heritage]
+_base: [ibkr]
 
-account: ibkr-gu
+account: ibkr-fe
 
-path: extra/2023/ibkr-gu.csv
+path: extra/2023/ibkr-fe.csv
 
-parser._type: ibkr
 
 y: yes
 

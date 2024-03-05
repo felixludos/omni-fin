@@ -5,7 +5,7 @@ from .imports import *
 from .misc import get_path, load_db, load_item_file
 from .building import init_db
 from .parsers import Parser
-from .datacls import Record, Asset, Account, Report, Tag
+from .datacls import Record, Asset, Account, Report, Tag, Transaction
 
 
 
