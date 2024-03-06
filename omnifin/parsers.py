@@ -492,6 +492,12 @@ class IBKR(Parser):
 			return self.parse_withholding(item, tags)
 		raise ValueError(f"Unknown item type: {item}")
 
+	def sanitize_symbol(self, symbol: str, currency: str):
+		if (symbol, currency) in self.symbols:
+			return self.symbols[symbol, currency]
+		if symbol.endswith('d') or symbol.endswith('e') or symbol.endswith('b'):
+			return self.sanitize_symbol(symbol[:-1], currency)
+
 	def parse_withholding(self, item: dict, tags: dict[str, list[Record]]):
 
 		amt = self.to_number(item['Amount'])
@@ -651,12 +657,6 @@ class IBKR(Parser):
 
 		return txn
 
-	def sanitize_symbol(self, symbol: str, currency: str):
-		if (symbol, currency) in self.symbols:
-			return self.symbols[symbol, currency]
-		if symbol.endswith('d') or symbol.endswith('e') or symbol.endswith('b'):
-			return self.sanitize_symbol(symbol[:-1], currency)
-
 	def parse_trade(self, item: dict, tags: dict[str, list[Record]]):
 
 		txn = Transaction(sender=self.account, receiver=self.account)
@@ -704,6 +704,171 @@ class IBKR(Parser):
 
 @fig.component('fidelity')
 class Fidelity(Parser):
-	pass
+	def load_items(self, path: Path):
+
+		lines = path.read_text(encoding='utf-8').split('\n')
+
+		assert len(lines) > 20
+		fixed = lines[4:-16]
+
+		csv = io.BytesIO()
+		csv.write('\n'.join(fixed).encode('utf-8'))
+		csv.seek(0)
+		items = list(load_csv_rows(csv))
+		csv.close()
+
+		return items
+
+	def prepare(self, account: Account, items: Iterable[dict]):
+		recs = super().prepare(account, items)
+
+		currency = 'USD'
+		assert all(item['Currency'] == currency for item in items), \
+			f'Unknown currency: {set(item["Currency"] for item in items)}'
+		symbols = {item['Symbol'].strip(): item['Security Description'].strip() for item in items
+				   if item['Symbol'] is not None and len(item['Symbol'].strip())}
+
+		recs.extend([Asset(name=symbol, category='stock', description=f'{desc}')
+					 for symbol, desc in symbols.items()])
+
+		return recs
+
+	def parse(self, item: dict, tags: dict[str, list[Record]]):
+
+		action = item['Action'].strip().lower()
+
+		assert item['Commission'] is None, f'{item["Commission"]}'
+		assert item['Accrued Interest'] is None, f'{item["Accrued Interest"]}'
+
+		if (action.startswith('you ') or action.startswith('reinvestment ') or action.startswith('redemption ')):
+			return self.parse_trade(item, tags)
+		elif action.startswith('transferred to vs ') or action.startswith('electronic funds transfer '):
+			return self.parse_transfer(item, tags)
+		elif (action.startswith('dividend received ') or action.startswith('short-term cap gain ')
+			  or action.startswith('long-term cap gain ') or action.startswith('distribution ')):
+			return self.parse_gain(item, tags, source='dividend')
+		elif action.startswith('interest earned '):
+			return self.parse_gain(item, tags, source='interest')
+		elif action.startswith('fee charged '):
+			return self.parse_fee(item, tags, target='institution')
+		elif action.startswith('foreign tax paid '):
+			return self.parse_fee(item, tags, target='tax')
+		elif (action.startswith('reverse split ') or action.startswith('exchanged to fzfxx ')
+			  or action.startswith('transferred to fzfxx ') or action.startswith('transferred to fcash ')
+			  or action.startswith('transferred from fcash ')):
+			return # skip
+		else:
+			raise ValueError(f'Unknown action: {action}')
+
+
+	def parse_transfer(self, item: dict, tags: dict[str, list[Record]]):
+
+		other = item['Security Description'].strip()
+		assert other != 'No Description', f'Missing other account'
+		other = Account.find(other)
+
+		amt = format_regular_amount(item['Amount'])
+		currency = item['Currency'].strip()
+
+		txn = Transaction() if other.owner == 'external' or amt < 0 else Verification()
+
+		txn.sender = self.account if amt < 0 else other
+		txn.receiver = other if amt < 0 else self.account
+
+		txn.date = datetime.strptime(item['Run Date'].strip(), '%m/%d/%Y').date()
+
+		txn.amount = abs(amt)
+		txn.unit = currency
+
+		txn.description = item['Action'].strip()
+
+		return txn
+
+
+	def parse_fee(self, item: dict, tags: dict[str, list[Record]], *, target='institution'):
+
+		assert item['Fees'] is None, f'{item["Fees"]}'
+
+		quantity = format_regular_amount(item['Quantity'])
+		assert quantity == 0, f'{quantity}'
+
+		txn = Transaction(sender=self.account, receiver=target)
+
+		amt = format_regular_amount(item['Amount'])
+		currency = item['Currency'].strip()
+
+		assert amt < 0, f'{amt}'
+
+		txn.amount = abs(amt)
+		txn.unit = currency
+
+		action = item['Action'].strip()
+		txn.description = action
+
+		txn.date = datetime.strptime(item['Run Date'], ' %m/%d/%Y').date()
+
+		return txn
+
+
+	def parse_gain(self, item: dict, tags: dict[str, list[Record]], *, source='dividend'):
+
+		assert item['Fees'] is None, f'{item["Fees"]}'
+
+		amt = format_regular_amount(item['Amount'])
+		currency = item['Currency'].strip()
+
+		quantity = format_regular_amount(item['Quantity'])
+		symbol = item['Symbol'].strip()
+
+		assert amt == 0 or quantity == 0, f'{amt} vs {quantity}'
+
+		txn = Transaction(sender=source, receiver=self.account)
+
+		txn.amount = amt if amt != 0 else quantity
+		txn.unit = currency if amt != 0 else symbol
+
+		assert txn.amount > 0, f'{txn.amount}'
+
+		txn.description = item['Action'].strip()
+		txn.date = datetime.strptime(item['Run Date'], ' %m/%d/%Y').date()
+
+		return txn
+
+
+	def parse_trade(self, item: dict, tags: dict[str, list[Record]]):
+
+		txn = Transaction(sender=self.account, receiver=self.account)
+
+		amt = format_regular_amount(item['Amount'])
+		currency = item['Currency'].strip()
+
+		quantity = format_regular_amount(item['Quantity'])
+		symbol = item['Symbol'].strip()
+
+		txn.amount, txn.unit = (abs(amt), currency) if amt < 0 else (abs(quantity), symbol)
+		txn.received_amount, txn.received_unit = (abs(quantity), symbol) if amt < 0 else (abs(amt), currency)
+
+		action = item['Action'].strip()
+		txn.description = action
+
+		txn.date = datetime.strptime(item['Run Date'], ' %m/%d/%Y').date()
+
+		if item['Fees'] is not None:
+			cost = format_regular_amount(item['Fees'])
+			if cost != 0:
+				fee = Transaction()
+
+				fee.amount = abs(cost)
+				fee.unit = currency
+
+				fee.sender = self.account
+				fee.receiver = 'institution'
+
+				fee.date = txn.date
+				fee.description = f'fee for {action}'
+
+				return [txn, fee]
+
+		return txn
 
 

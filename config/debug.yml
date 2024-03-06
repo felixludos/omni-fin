@@ -73,11 +73,11 @@ shortcut-path: db/vault/shortcuts.yml
 
 _meta.script_name: txn
 
-_base: [ibkr]
+_base: [fidelity]
 
-account: ibkr-fe
+account: fidelity
 
-path: extra/2023/ibkr-fe.csv
+path: extra/2023/fidelity-fe.csv
 
 
 y: yes
