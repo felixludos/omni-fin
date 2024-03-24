@@ -153,6 +153,28 @@ def add_transactions(cfg: fig.Configuration):
 
 
 
+@fig.script('multi-txn')
+def multiple_txn(cfg: fig.Configuration):
+
+	pbar = cfg.pull('multi-pbar', True)
+
+	todo = list(cfg.peek('txn').peek_children())
+
+	itr = tqdm(todo) if pbar else todo
+
+	for item in itr:
+		account = item.pull('account', None, silent=True)
+		if pbar:
+			itr.set_description(f'Account: {account}')
+
+		with cfg.silence(True):
+			add_transactions(item)
+
+
+
+
+
+
 
 
 

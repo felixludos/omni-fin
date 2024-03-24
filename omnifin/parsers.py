@@ -19,8 +19,28 @@ class Parser(fig.Configurable):
 
 
 
+class MCC_Parser(Parser):
+	def extract_mcc_tags(self, tags: Iterable[str]):
+		existing = set()
+		mcc = MCC()
+		concepts = []
+		for tag in tags:
+			if tag not in existing and (mcc_tag := mcc.find(tag)) is not None:
+				concepts.append(Tag(name=tag, category='MCC', description=mcc_tag['edited_description']))
+			existing.add(tag)
+		return concepts
+
+	def prepare(self, account: Account, items: Iterable[dict]):
+		concepts = super().prepare(account, items)
+		candidates = Counter(tag for item in items if item['Tags'] is not None for tag in
+							(item['Tags'].split(';') if ';' in item['Tags'] else item['Tags'].split(',')))
+		concepts.extend(self.extract_mcc_tags(candidates))
+		return concepts
+
+
+
 @fig.component('amazon')
-class Amazon(Parser):
+class Amazon(MCC_Parser):
 	def prepare(self, account: Account, items: Iterable[dict]):
 		recs = super().prepare(account, items)
 		recs.extend([
@@ -55,7 +75,7 @@ class Amazon(Parser):
 
 
 @fig.component('bank99')
-class Bank99(Parser):
+class Bank99(MCC_Parser):
 	def load_items(self, path: Path):
 		return list(load_csv_rows(path, delimiter=';'))
 
@@ -89,7 +109,7 @@ class Bank99(Parser):
 
 
 @fig.component('becu')
-class BECU(Parser):
+class BECU(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Record]]):
 
 		sender = Account.find(item['Sender'])
@@ -117,7 +137,7 @@ class BECU(Parser):
 
 
 @fig.component('boa')
-class BOA(Parser):
+class BOA(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Record]]):
 
 		sender = Account.find(item['Sender'])
@@ -142,26 +162,6 @@ class BOA(Parser):
 				tags.setdefault(tag, []).append(txn)
 
 		return txn
-
-
-
-class MCC_Parser(Parser):
-	def extract_mcc_tags(self, tags: Iterable[str]):
-		existing = set()
-		mcc = MCC()
-		concepts = []
-		for tag in tags:
-			if tag not in existing and (mcc_tag := mcc.find(tag)) is not None:
-				concepts.append(Tag(name=tag, category='MCC', description=mcc_tag['edited_description']))
-			existing.add(tag)
-		return concepts
-
-	def prepare(self, account: Account, items: Iterable[dict]):
-		concepts = super().prepare(account, items)
-		candidates = Counter(tag for item in items if item['Tags'] is not None for tag in
-							(item['Tags'].split(';') if ';' in item['Tags'] else item['Tags'].split(',')))
-		concepts.extend(self.extract_mcc_tags(candidates))
-		return concepts
 
 
 
@@ -330,7 +330,7 @@ class DKB(MCC_Parser):
 
 
 @fig.component('heritage')
-class Heritage(Parser):
+class Heritage(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Record]]):
 
 		sender = Account.find(item['Sender'])
@@ -375,7 +375,8 @@ class IBKR(Parser):
 					   for k, data in raw.items()}
 			assert len(raw) == len(symbols)
 		if symbol_map is not None:
-			symbol_map = {(ibkr, curr): k for k, (ibkr, curr) in symbol_map.items()}
+			symbol_map = {tuple(ibkrticker_currency.split('_')): yf_symbol
+						  for ibkrticker_currency, yf_symbol in symbol_map.items()}
 			if symbols is not None:
 				symbols.update(symbol_map)
 			else:
@@ -708,8 +709,9 @@ class Fidelity(Parser):
 
 		lines = path.read_text(encoding='utf-8').split('\n')
 
-		assert len(lines) > 20
-		fixed = lines[4:-16]
+		fixed = [line for line in lines if len(line) and line != 'Brokerage'
+				 and not line.startswith('"')
+				 and not line.startswith('Date downloaded')]
 
 		csv = io.BytesIO()
 		csv.write('\n'.join(fixed).encode('utf-8'))
@@ -721,6 +723,19 @@ class Fidelity(Parser):
 
 	def prepare(self, account: Account, items: Iterable[dict]):
 		recs = super().prepare(account, items)
+
+		if 'Price ($)' in items[0]:
+			keys = [key for key in items[0] if key.endswith(' ($)')]
+			for item in items:
+				item['Currency'] = 'USD'
+				for key in keys:
+					item[key[:-4]] = item[key]
+					del item[key]
+
+		if 'Security Description' not in items[0]:
+			for item in items:
+				item['Security Description'] = item['Description']
+				del item['Description']
 
 		currency = 'USD'
 		assert all(item['Currency'] == currency for item in items), \
@@ -742,14 +757,20 @@ class Fidelity(Parser):
 
 		if (action.startswith('you ') or action.startswith('reinvestment ') or action.startswith('redemption ')):
 			return self.parse_trade(item, tags)
-		elif action.startswith('transferred to vs ') or action.startswith('electronic funds transfer '):
+		elif any(action.startswith(key) for key in ['transferred to vs ', 'electronic funds transfer ',
+			'direct debit ',
+													'cash contribution', 'debit card purchase ',
+													'partic contr current', 'co contr current yr',
+													'transferred from mfst ', 'normal distr partial ',
+													'transferred from microsoft', 'direct deposit ',
+													'transferred from vs ',]):
 			return self.parse_transfer(item, tags)
 		elif (action.startswith('dividend received ') or action.startswith('short-term cap gain ')
 			  or action.startswith('long-term cap gain ') or action.startswith('distribution ')):
 			return self.parse_gain(item, tags, source='dividend')
 		elif action.startswith('interest earned '):
 			return self.parse_gain(item, tags, source='interest')
-		elif action.startswith('fee charged '):
+		elif action.startswith('fee charged ') or action.startswith('adjust fee charged '):
 			return self.parse_fee(item, tags, target='institution')
 		elif action.startswith('foreign tax paid '):
 			return self.parse_fee(item, tags, target='tax')
@@ -758,7 +779,7 @@ class Fidelity(Parser):
 			  or action.startswith('transferred from fcash ')):
 			return # skip
 		else:
-			raise ValueError(f'Unknown action: {action}')
+			raise ValueError(f'{action}')
 
 
 	def parse_transfer(self, item: dict, tags: dict[str, list[Record]]):
@@ -782,6 +803,10 @@ class Fidelity(Parser):
 
 		txn.description = item['Action'].strip()
 
+		if 'hsa' in self.account.description and any(txn.description.lower().startswith(key) for key in
+			   ['debit card purchase', 'normal distr partial']):
+			tags.setdefault('medical', []).append(txn)
+
 		return txn
 
 
@@ -792,12 +817,15 @@ class Fidelity(Parser):
 		quantity = format_regular_amount(item['Quantity'])
 		assert quantity == 0, f'{quantity}'
 
-		txn = Transaction(sender=self.account, receiver=target)
+		txn = Transaction()
 
 		amt = format_regular_amount(item['Amount'])
 		currency = item['Currency'].strip()
 
-		assert amt < 0, f'{amt}'
+		txn.sender = self.account if amt < 0 else target
+		txn.receiver = target if amt < 0 else self.account
+
+		# assert amt < 0, f'{amt}'
 
 		txn.amount = abs(amt)
 		txn.unit = currency

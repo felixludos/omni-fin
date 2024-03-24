@@ -71,15 +71,16 @@ shortcut-path: db/vault/shortcuts.yml
 
 ########################################################################
 
-_meta.script_name: txn
-
-_base: [fidelity]
-
-account: fidelity
-
-path: extra/2023/fidelity-fe.csv
-
+#_meta.script_name: txn
 
 y: yes
 
 ########################################################################
+
+_base: [year2023]
+
+_meta.script_name: multi-txn
+
+
+
+
