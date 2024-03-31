@@ -5,7 +5,7 @@ from .imports import *
 from .misc import get_path, load_db, load_item_file
 from .building import init_db
 from .parsers import Parser
-from .datacls import Record, Asset, Account, Report, Tag, Transaction
+from .datacls import Record, Asset, Account, Report, Tag, Transaction, Tagged, Linkable, Reportable
 
 
 
@@ -109,25 +109,36 @@ def add_transactions(cfg: fig.Configuration):
 
 	cfg.print(f'Loaded {len(items)} items from {path}')
 
+	skip_commit = cfg.pull('skip-commit', False)
+	skip_confirm = (cfg.pull('skip-confirm', False, silent=True)
+					or cfg.pulls('yes', 'y', default=False, silent=True))
+	if skip_confirm:
+		cfg.print(f'Will not confirm before writing records.')
+	if skip_commit:
+		cfg.print(f'Will not commit changes to database.')
+
 	concepts = parser.prepare(account, items)
 	for concept in concepts:
 		concept.write_missing(report)
 
-	records = []
-	tags = {}
+	records: list[Reportable] = []
+	tags: dict[str, list[Tagged]] = {}
+	links: dict[str, list[list[Linkable]]] = {}
 
 	pbar = cfg.pull('pbar', True)
 	itr = tqdm(items) if pbar else items
 	for item in itr:
-		record = parser.parse(item, tags)
+		record = parser.parse(item, tags, links)
 		if record is not None:
 			# record.write(report)
-			if isinstance(record, list):
+			if isinstance(record, (list, tuple)):
 				records.extend(record)
 			else:
 				records.append(record)
 
-	if not cfg.pulls('yes', 'y', default=False, silent=True):
+	parser.finish(records, tags, links)
+
+	if not skip_confirm:
 		while True:
 			cfg.print(f'Write {len(records)} records? ([y]/n): ')
 			val = input().strip().lower()
@@ -146,7 +157,11 @@ def add_transactions(cfg: fig.Configuration):
 		for rec in recs:
 			rec.add_tags(report, tag)
 
-	conn.commit()
+	for category, (link, *others) in links.items():
+		link.add_links(report, *others, category=category)
+
+	if not skip_commit:
+		conn.commit()
 
 	cfg.print(f'{len(records)} records saved.')
 	return records
@@ -158,6 +173,9 @@ def multiple_txn(cfg: fig.Configuration):
 
 	pbar = cfg.pull('multi-pbar', True)
 
+	cfg.push('skip-commit', True, silent=True, overwrite=False)
+	cfg.push('skip-confirm', True, silent=True, overwrite=False)
+
 	todo = list(cfg.peek('txn').peek_children())
 
 	itr = tqdm(todo) if pbar else todo
@@ -167,8 +185,11 @@ def multiple_txn(cfg: fig.Configuration):
 		if pbar:
 			itr.set_description(f'Account: {account}')
 
-		with cfg.silence(True):
-			add_transactions(item)
+		add_transactions(item)
+		# with cfg.silence(True):
+		# 	add_transactions(item)
+
+
 
 
 

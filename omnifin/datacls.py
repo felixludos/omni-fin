@@ -139,10 +139,13 @@ class RecordBase:
 
 	@classmethod
 	def find_all(cls, **props):
+		props = {k: v.ID if isinstance(v, Record) else v for k, v in props.items()}
+		props = {k: v.strftime('%Y-%m-%d') if isinstance(v, datetime) else v for k, v in props.items()}
 		if len(props):
-			query = ' AND '.join(f'{cls._table_keys.get(k, k)} = ?' for k in props)
+			order = sorted(props.keys())
+			query = ' AND '.join(f'{cls._table_keys.get(k, k)} = ?' for k in order)
 			out = cls._conn.execute(f'SELECT * FROM {cls._table_name} WHERE {query}',
-									tuple(props.values())).fetchall()
+									tuple(props[k] for k in order)).fetchall()
 		else:
 			out = cls._conn.execute(f'SELECT * FROM {cls._table_name}').fetchall()
 
@@ -204,6 +207,7 @@ class Report(Record):
 
 	@classmethod
 	def _from_row(cls, ID, category, account, description, created):
+		created = datetime.strptime(created, '%Y-%m-%d %H:%M:%S.%f')
 		return cls(ID=ID, category=category, account=account, description=description, created=created)
 
 
@@ -529,6 +533,10 @@ class Statement(Linkable, Tagged):
 
 	@classmethod
 	def _from_row(cls, ID, date, account, balance, unit, description, report):
+		try:
+			date = datetime.strptime(date, '%Y-%m-%d')
+		except ValueError:
+			date = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 		return cls(ID=ID, date=date, account=account, balance=balance, unit=unit, description=description,
 				   report=report)
 
@@ -605,6 +613,10 @@ class Transaction(Linkable, Tagged):
 	@classmethod
 	def _from_row(cls, ID, date, location, sender, amount, unit, receiver, received_amount, received_unit,
 				  description, reference, report):
+		try:
+			date = datetime.strptime(date, '%Y-%m-%d')
+		except ValueError:
+			date = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 		return cls(ID=ID, date=date, location=location, sender=sender, amount=amount, unit=unit,
 				   receiver=receiver, received_amount=received_amount, received_unit=received_unit,
 				   description=description, reference=reference, report=report)
@@ -688,6 +700,10 @@ class Verification(Reportable, Tagged):
 	@classmethod
 	def _from_row(cls, ID, txn, date, location, sender, amount, unit, receiver, received_amount, received_unit,
 				  description, reference, report):
+		try:
+			date = datetime.strptime(date, '%Y-%m-%d')
+		except ValueError:
+			date = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 		return cls(ID=ID, txn=txn, date=date, location=location, sender=sender, amount=amount, unit=unit,
 				   receiver=receiver, received_amount=received_amount, received_unit=received_unit,
 				   description=description, reference=reference, report=report)
