@@ -2,7 +2,7 @@ from .imports import *
 
 from .misc import get_path, load_db, load_item_file, format_european_amount, MCC, format_regular_amount
 from .building import init_db
-from .datacls import Record, Asset, Account, Report, Transaction, Verification, Tag
+from .datacls import Record, Asset, Account, Report, Transaction, Verification, Tag, Tagged, Linkable, Reportable
 
 
 
@@ -14,9 +14,11 @@ class Parser(fig.Configurable):
 		self.account = account
 		return []
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 		raise NotImplementedError
 
+	def finish(self, records: list[Reportable], tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
+		pass
 
 
 class MCC_Parser(Parser):
@@ -50,7 +52,7 @@ class Amazon(MCC_Parser):
 		return recs
 
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 		if isinstance(item['Receiver'], str):
 			txn = Transaction(sender=self.account, receiver=item['Receiver'])
 		else:
@@ -80,7 +82,7 @@ class Bank99(MCC_Parser):
 		return list(load_csv_rows(path, delimiter=';'))
 
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		txn = Transaction()
 
@@ -110,7 +112,7 @@ class Bank99(MCC_Parser):
 
 @fig.component('becu')
 class BECU(MCC_Parser):
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 
@@ -138,7 +140,7 @@ class BECU(MCC_Parser):
 
 @fig.component('boa')
 class BOA(MCC_Parser):
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 
@@ -167,7 +169,7 @@ class BOA(MCC_Parser):
 
 @fig.component('cap1')
 class CapitalOne(MCC_Parser):
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 
@@ -195,7 +197,7 @@ class CapitalOne(MCC_Parser):
 
 @fig.component('usbank')
 class USBank(MCC_Parser):
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 
@@ -236,7 +238,7 @@ class Commerzbank(MCC_Parser):
 	def load_items(self, path: Path):
 		return list(load_csv_rows(path, delimiter=';'))
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 		receiver = Account.find(item['Receiver'])
@@ -267,7 +269,7 @@ class Commerzbank(MCC_Parser):
 
 @fig.component('costco')
 class CostcoCredit(MCC_Parser):
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 		receiver = Account.find(item['Receiver'])
@@ -300,7 +302,7 @@ class DKB(MCC_Parser):
 	def load_items(self, path: Path):
 		return list(load_csv_rows(path, delimiter=';'))
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 		receiver = Account.find(item['Receiver'])
@@ -331,7 +333,7 @@ class DKB(MCC_Parser):
 
 @fig.component('heritage')
 class Heritage(MCC_Parser):
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		sender = Account.find(item['Sender'])
 		receiver = Account.find(item['Receiver'])
@@ -476,21 +478,21 @@ class IBKR(Parser):
 	def to_number(val: str | int | float):
 		return format_regular_amount(val)
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 		if 'Deposits & Withdrawals' in item:
-			return self.parse_transfer(item, tags)
+			return self.parse_transfer(item, tags, links)
 		elif 'Trades' in item and item['Asset Category'] == 'Stocks':
-			return self.parse_trade(item, tags)
+			return self.parse_trade(item, tags, links)
 		elif 'Trades' in item and item['Asset Category'] == 'Forex':
-			return self.parse_forex(item, tags)
+			return self.parse_forex(item, tags, links)
 		elif 'Dividends' in item:
-			return self.parse_dividend(item, tags)
+			return self.parse_dividend(item, tags, links)
 		elif 'Interest' in item:
-			return self.parse_interest(item, tags)
+			return self.parse_interest(item, tags, links)
 		elif 'Transaction Fees' in item:
-			return self.parse_transaction_tax(item, tags)
+			return self.parse_transaction_tax(item, tags, links)
 		elif 'Withholding Tax' in item:
-			return self.parse_withholding(item, tags)
+			return self.parse_withholding(item, tags, links)
 		raise ValueError(f"Unknown item type: {item}")
 
 	def sanitize_symbol(self, symbol: str, currency: str):
@@ -499,7 +501,7 @@ class IBKR(Parser):
 		if symbol.endswith('d') or symbol.endswith('e') or symbol.endswith('b'):
 			return self.sanitize_symbol(symbol[:-1], currency)
 
-	def parse_withholding(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_withholding(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		amt = self.to_number(item['Amount'])
 
@@ -517,7 +519,7 @@ class IBKR(Parser):
 
 		return txn
 
-	def parse_transaction_tax(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_transaction_tax(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 		txn = Transaction()
 
 		txn.sender = self.account
@@ -540,7 +542,7 @@ class IBKR(Parser):
 
 		return txn
 
-	def parse_interest(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_interest(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		amt = self.to_number(item['Amount'])
 
@@ -560,7 +562,7 @@ class IBKR(Parser):
 
 		return txn
 
-	def parse_forex(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_forex(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		proceeds = self.to_number(item['Proceeds'])
 		currency = item['Currency']
@@ -607,7 +609,7 @@ class IBKR(Parser):
 				return [txn, fee]
 		return txn
 
-	def parse_dividend(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_dividend(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		txn = Transaction()
 
@@ -623,7 +625,7 @@ class IBKR(Parser):
 
 		return txn
 
-	def parse_transfer(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_transfer(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		amt = item['Amount']
 		currency = item['Currency']
@@ -658,7 +660,7 @@ class IBKR(Parser):
 
 		return txn
 
-	def parse_trade(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_trade(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		txn = Transaction(sender=self.account, receiver=self.account)
 
@@ -697,6 +699,8 @@ class IBKR(Parser):
 
 			fee.date = txn.date
 			fee.description = 'commission/fee'
+
+			links.setdefault('fee', []).append([txn, fee])
 
 			return [txn, fee]
 		return txn
@@ -748,7 +752,7 @@ class Fidelity(Parser):
 
 		return recs
 
-	def parse(self, item: dict, tags: dict[str, list[Record]]):
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		action = item['Action'].strip().lower()
 
@@ -756,7 +760,7 @@ class Fidelity(Parser):
 		assert item['Accrued Interest'] is None, f'{item["Accrued Interest"]}'
 
 		if (action.startswith('you ') or action.startswith('reinvestment ') or action.startswith('redemption ')):
-			return self.parse_trade(item, tags)
+			return self.parse_trade(item, tags, links)
 		elif any(action.startswith(key) for key in ['transferred to vs ', 'electronic funds transfer ',
 			'direct debit ',
 													'cash contribution', 'debit card purchase ',
@@ -764,16 +768,16 @@ class Fidelity(Parser):
 													'transferred from mfst ', 'normal distr partial ',
 													'transferred from microsoft', 'direct deposit ',
 													'transferred from vs ',]):
-			return self.parse_transfer(item, tags)
+			return self.parse_transfer(item, tags, links)
 		elif (action.startswith('dividend received ') or action.startswith('short-term cap gain ')
 			  or action.startswith('long-term cap gain ') or action.startswith('distribution ')):
-			return self.parse_gain(item, tags, source='dividend')
+			return self.parse_gain(item, tags, links, source='dividend')
 		elif action.startswith('interest earned '):
-			return self.parse_gain(item, tags, source='interest')
+			return self.parse_gain(item, tags, links, source='interest')
 		elif action.startswith('fee charged ') or action.startswith('adjust fee charged '):
-			return self.parse_fee(item, tags, target='institution')
+			return self.parse_fee(item, tags, links, target='institution')
 		elif action.startswith('foreign tax paid '):
-			return self.parse_fee(item, tags, target='tax')
+			return self.parse_fee(item, tags, links, target='tax')
 		elif (action.startswith('reverse split ') or action.startswith('exchanged to fzfxx ')
 			  or action.startswith('transferred to fzfxx ') or action.startswith('transferred to fcash ')
 			  or action.startswith('transferred from fcash ')):
@@ -782,7 +786,7 @@ class Fidelity(Parser):
 			raise ValueError(f'{action}')
 
 
-	def parse_transfer(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_transfer(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		other = item['Security Description'].strip()
 		assert other != 'No Description', f'Missing other account'
@@ -810,7 +814,8 @@ class Fidelity(Parser):
 		return txn
 
 
-	def parse_fee(self, item: dict, tags: dict[str, list[Record]], *, target='institution'):
+	def parse_fee(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]], *,
+				  target='institution'):
 
 		assert item['Fees'] is None, f'{item["Fees"]}'
 
@@ -838,7 +843,8 @@ class Fidelity(Parser):
 		return txn
 
 
-	def parse_gain(self, item: dict, tags: dict[str, list[Record]], *, source='dividend'):
+	def parse_gain(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]], *,
+				   source='dividend'):
 
 		assert item['Fees'] is None, f'{item["Fees"]}'
 
@@ -863,7 +869,7 @@ class Fidelity(Parser):
 		return txn
 
 
-	def parse_trade(self, item: dict, tags: dict[str, list[Record]]):
+	def parse_trade(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
 		txn = Transaction(sender=self.account, receiver=self.account)
 
@@ -895,8 +901,83 @@ class Fidelity(Parser):
 				fee.date = txn.date
 				fee.description = f'fee for {action}'
 
+				links.setdefault('fee', []).append([txn, fee])
+
 				return [txn, fee]
 
 		return txn
+
+
+
+@fig.component('paypal')
+class Paypal(MCC_Parser):
+	def prepare(self, account: Account, items: Iterable[dict]):
+
+		self.waiting = {}
+		self.groups = []
+		return super().prepare(account, items)
+
+
+	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
+
+		action = item['Type'].lower()
+		status = item['Status'].lower()
+
+		if action == 'general authorization' or status != 'completed':
+			return
+		if action == 'general currency conversion':
+			pass
+
+		assert item['Sender'] is not None or item['Receiver'] is not None, f'{item}'
+
+		currency = item['Currency'].strip()
+
+		amt = format_regular_amount(item['Gross'])
+
+		txn = Transaction()
+
+		txn.sender = self.account if item['Sender'] is None else item['Sender']
+		txn.receiver = self.account if item['Receiver'] is None else item['Receiver']
+		assert (txn.sender == self.account) != (txn.receiver == self.account), f'{txn.sender} {txn.receiver}'
+
+		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
+
+		txn.amount = abs(amt)
+		txn.unit = currency
+
+		txn.description = f'{item["Item Title"]} - {item["Name"]}'
+		txn.location = item['Location']
+
+		if item['Tags'] is not None:
+			for tag in item['Tags'].split(';') if ';' in item['Tags'] else item['Tags'].split(','):
+				tags.setdefault(tag, []).append(txn)
+
+		fee = item['Fee'].strip()
+		fee = format_regular_amount(fee)
+
+		if fee != 0:
+			assert fee < 0
+
+			fee_txn = Transaction()
+
+			fee_txn.sender = self.account
+			fee_txn.receiver = 'institution'
+
+			fee_txn.date = txn.date
+
+			fee_txn.amount = abs(fee)
+			fee_txn.unit = currency
+
+			fee_txn.description = f'fee for {txn.description}'
+			fee_txn.location = txn.location
+
+			links.setdefault('fee', []).append([txn, fee_txn])
+
+			return [txn, fee_txn]
+
+		return txn
+
+
+
 
 

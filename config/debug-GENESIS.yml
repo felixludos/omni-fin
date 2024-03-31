@@ -71,20 +71,16 @@ shortcut-path: db/vault/shortcuts.yml
 
 ########################################################################
 
-_meta.script_name: txn
+#_meta.script_name: txn
 
-#y: yes
+y: yes
 
 ########################################################################
 
-#_base: [year2023]
+_base: [year2023]
 
-#_meta.script_name: multi-txn
+_meta.script_name: multi-txn
 
-
-parser._type: paypal
-account: paypal
-path: extra/2023/paypal.CSV
 
 
 
