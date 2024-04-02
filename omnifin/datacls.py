@@ -365,9 +365,9 @@ class Link(Reportable, Record):
 
 
 	def _table_row_data(self, raw: dict = None):
-		keys = *self._node_keys, self._content_keys
-		items = {self._table_keys.get(key, key): raw.get(key, getattr(self, key)) for key in keys}
-		items = {key: val.ID if isinstance(val, Record) else val for key, val in items.items()}
+		items = super()._table_row_data(raw)
+		keys = self._node_keys
+		items.update({self._table_keys.get(key, key): getattr(self, key).ID for key in keys})
 		return items
 
 
@@ -439,13 +439,13 @@ class Undirected(Link):
 
 
 	@classmethod
-	def _cluster(cls, _completed: set, record: Linkable, category: str = None):
+	def _cluster(cls, _completed: set[int], record: Linkable, category: str = None):
 		_completed.add(record.ID)
 		for link in cls.of(record, category):
 			rec1, rec2 = getattr(link, cls._node_keys[0]), getattr(link, cls._node_keys[1])
 			other = rec2 if rec1.ID == record.ID else rec1
-			if other not in _completed:
-				yield from cls.cluster(_completed, other, category)
+			if other.ID not in _completed:
+				yield from cls._cluster(_completed, other, category)
 		yield record
 
 
@@ -566,7 +566,7 @@ class Statement(Linkable, Tagged):
 		new = []
 		for other in statements:
 			if other not in existing:
-				self._link_type(category=category, state1=self, state2=other, report=report).write(cursor=cursor)
+				self._link_type(category=category, state1=self, state2=other).write(report=report, cursor=cursor)
 				new.append(other)
 		return new
 
@@ -578,7 +578,7 @@ class StatementLink(Undirected):
 
 	_table_name = 'statement_links'
 	_node_keys = 'state1', 'state2'
-	_content_keys = 'category'
+	_content_keys = ('category',)
 	_table_keys = {'category': 'link_type', 'state1': 'id1', 'state2': 'id2'}
 
 	@classmethod
@@ -639,8 +639,7 @@ class Transaction(Linkable, Tagged):
 
 
 	def get_links(self, category: str = None):
-		for link in self._link_type.cluster(self, category=category):
-			yield link.txn2 if link.txn1 == self else link.txn1
+		yield from self._link_type.cluster(self, category=category)
 
 
 	def add_links(self, report: Report, *links: Link, category: str = None, cursor=None):
@@ -648,11 +647,11 @@ class Transaction(Linkable, Tagged):
 		assert self.exists, 'Transaction not written to database'
 		if cursor is None:
 			cursor = self._conn.cursor()
-		existing = set(self.get_links(category))
+		existing = set(txn.ID for txn in self.get_links(category))
 		new = []
 		for other in links:
-			if other not in existing:
-				self._link_type(txn1=self, txn2=other, category=category, report=report).write(cursor=cursor)
+			if other.ID not in existing:
+				self._link_type(txn1=self, txn2=other, category=category).write(report=report, cursor=cursor)
 				new.append(other)
 		return new
 
@@ -664,7 +663,7 @@ class TransactionLink(Undirected):
 
 	_table_name = 'transaction_links'
 	_node_keys = 'txn1', 'txn2'
-	_content_keys = 'category'
+	_content_keys = ('category',)
 	_table_keys = {'category': 'link_type', 'txn1': 'id1', 'txn2': 'id2'}
 
 	@classmethod

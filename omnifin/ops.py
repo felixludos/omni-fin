@@ -8,7 +8,7 @@ from .parsers import Parser
 from .datacls import Record, Asset, Account, Report, Tag, Transaction, Tagged, Linkable, Reportable
 
 
-
+@fig.component('sqlite')
 def form_connection(cfg: fig.Configuration):
 	path = get_path(cfg, path_key='db', root_key='root')
 	if path is None:
@@ -47,7 +47,9 @@ def create_report(cfg: fig.Configuration, desc: str = None) -> Report:
 
 @fig.script('init-db')
 def create_db(cfg: fig.Configuration):
-	conn = form_connection(cfg)
+	# conn = form_connection(cfg)
+	# cfg.push('conn._type', 'sqlite', silent=True, overwrite=False)
+	conn = cfg.pull('conn')
 	init_db(conn)
 	# conn.commit()
 
@@ -87,7 +89,8 @@ def create_db(cfg: fig.Configuration):
 
 @fig.script('txn')
 def add_transactions(cfg: fig.Configuration):
-	conn = form_connection(cfg)
+	conn = cfg.pull('conn')
+	# conn = form_connection(cfg)
 	report = create_report(cfg)
 
 	account = None
@@ -138,6 +141,25 @@ def add_transactions(cfg: fig.Configuration):
 
 	parser.finish(records, tags, links)
 
+	for rec in records:
+		if isinstance(rec, Transaction):
+			assert rec.amount is not None and rec.amount >= 0, f'Amount not set for {rec}'
+			assert rec.received_amount is None or rec.received_amount > 0, f'Received amount not set for {rec}'
+
+	for rec in records:
+		rec.write(report)
+
+	for tag, recs in tags.items():
+		for rec in recs:
+			rec.add_tags(report, tag)
+
+	for category, groups in links.items():
+		for group in groups:
+			group = [txn for txn in group if isinstance(txn, Transaction)]
+			if len(group) > 1:
+				link, *others = group
+				link.add_links(report, *others, category=category)
+
 	if not skip_confirm:
 		while True:
 			cfg.print(f'Write {len(records)} records? ([y]/n): ')
@@ -150,16 +172,6 @@ def add_transactions(cfg: fig.Configuration):
 
 	cfg.print(f'Writing {len(records)} records.')
 
-	for rec in records:
-		rec.write(report)
-
-	for tag, recs in tags.items():
-		for rec in recs:
-			rec.add_tags(report, tag)
-
-	for category, (link, *others) in links.items():
-		link.add_links(report, *others, category=category)
-
 	if not skip_commit:
 		conn.commit()
 
@@ -168,8 +180,12 @@ def add_transactions(cfg: fig.Configuration):
 
 
 
-@fig.script('multi-txn')
+@fig.script('full-reset')
 def multiple_txn(cfg: fig.Configuration):
+
+	init_db(cfg)
+
+	conn = cfg.pull('conn')
 
 	pbar = cfg.pull('multi-pbar', True)
 
@@ -185,11 +201,12 @@ def multiple_txn(cfg: fig.Configuration):
 		if pbar:
 			itr.set_description(f'Account: {account}')
 
-		add_transactions(item)
-		# with cfg.silence(True):
-		# 	add_transactions(item)
+		with cfg.silence(True):
+			add_transactions(item)
 
-
+	cfg.print(f'Finished writing all transactions, now committing changes to database.')
+	conn.commit()
+	cfg.print(f'Committed all written records.')
 
 
 

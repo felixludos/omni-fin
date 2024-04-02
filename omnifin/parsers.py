@@ -61,7 +61,7 @@ class Amazon(MCC_Parser):
 		date = datetime.strptime(item['Transaction Date'], '%m/%d/%Y').date()
 		txn.date = date
 
-		txn.amount = format_european_amount(item['Amount'])
+		txn.amount = abs(format_regular_amount(item['Amount']))
 		txn.unit = 'usd'
 
 		txn.description = item['Description']
@@ -95,7 +95,7 @@ class Bank99(MCC_Parser):
 
 		txn.date = datetime.strptime(item['Buchungsdatum'], '%Y-%m-%d').date()
 
-		txn.amount = format_european_amount(item['Betrag'])
+		txn.amount = abs(format_european_amount(item['Betrag']))
 		txn.unit = 'eur'
 
 		txn.description = item['Notes']
@@ -124,7 +124,7 @@ class BECU(MCC_Parser):
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
 
-		txn.amount = format_european_amount(item['Debit' if sender is None else 'Credit'])
+		txn.amount = abs(format_regular_amount(item['Debit' if sender is None else 'Credit']))
 		txn.unit = 'usd'
 
 		txn.description = item['Notes']
@@ -152,7 +152,7 @@ class BOA(MCC_Parser):
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
 
-		txn.amount = format_european_amount(item['Amount'].replace(',', '')) if isinstance(item['Amount'], str) \
+		txn.amount = abs(format_regular_amount(item['Amount'].replace(',', ''))) if isinstance(item['Amount'], str) \
 			else abs(float(item['Amount']))
 		txn.unit = 'usd'
 
@@ -209,7 +209,7 @@ class USBank(MCC_Parser):
 
 		txn.date = datetime.strptime(item['Date'], '%Y-%m-%d').date()
 
-		txn.amount = format_european_amount(item['Amount'])
+		txn.amount = abs(format_regular_amount(item['Amount']))
 		txn.unit = 'usd'
 
 		notes = item['Notes']
@@ -347,7 +347,7 @@ class Heritage(MCC_Parser):
 
 		txn.date = datetime.strptime(item['Date'], '%m-%d-%Y').date()
 
-		txn.amount = format_european_amount(item['Amount'])
+		txn.amount = abs(format_regular_amount(item['Amount']))
 		txn.unit = 'usd'
 
 		txn.description = item['Description']
@@ -606,6 +606,8 @@ class IBKR(Parser):
 				fee.amount = abs(self.to_number(item[raw]))
 				fee.unit = raw.split('Comm in ')[-1]
 
+				links.setdefault('fee', []).append([txn, fee])
+
 				return [txn, fee]
 		return txn
 
@@ -618,7 +620,7 @@ class IBKR(Parser):
 
 		txn.date = datetime.strptime(item['Date'], '%Y-%m-%d').date()
 
-		txn.amount = format_european_amount(item['Amount'])
+		txn.amount = abs(format_regular_amount(item['Amount']))
 		txn.unit = item['Currency']
 
 		txn.description = item['Description']
@@ -912,10 +914,66 @@ class Fidelity(Parser):
 @fig.component('paypal')
 class Paypal(MCC_Parser):
 	def prepare(self, account: Account, items: Iterable[dict]):
-
-		self.waiting = {}
-		self.groups = []
+		self.groups = {}
+		self.conversions = {}
 		return super().prepare(account, items)
+
+
+	def parse_conversion(self, part1, part2):
+		assert part1['Link'] == part2['Link']
+
+		conversion = Transaction()
+
+		conversion.sender = self.account
+		conversion.receiver = self.account
+
+		assert part1['Date'] == part2['Date']
+		conversion.date = datetime.strptime(part1['Date'], '%m/%d/%Y').date()
+
+		amt1 = format_regular_amount(part1['Gross'])
+		amt2 = format_regular_amount(part2['Gross'])
+
+		assert amt1 != 0
+		assert (amt1 > 0) != (amt2 > 0), f'{amt1} {amt2}'
+
+		frm, to = (part1, part2) if amt1 < 0 else (part2, part1)
+		famt, tamt = (abs(amt1), abs(amt2)) if amt1 < 0 else (abs(amt2), abs(amt1))
+
+		conversion.amount = famt
+		conversion.unit = frm['Currency']
+
+		conversion.received_amount = tamt
+		conversion.received_unit = to['Currency']
+
+		self.groups.setdefault(part1['Link'], []).append(conversion)
+
+		assert part1['Tags'] is None and part2['Tags'] is None
+
+		return conversion
+
+
+	def parse_hold(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
+
+		action = item['Type'].lower()
+
+		amt = format_regular_amount(item['Gross'])
+
+		assert ('release' in action and amt > 0) or ('hold' in action and amt < 0), f'{action} {amt}'
+
+		txn = Transaction()
+
+		txn.sender = self.account if amt < 0 else 'institution'
+		txn.receiver = 'institution' if amt < 0 else self.account
+
+		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
+
+		txn.amount = abs(amt)
+		txn.unit = item['Currency']
+
+		txn.description = item['Type']
+		txn.location = item['Location']
+
+		return txn
 
 
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
@@ -923,10 +981,19 @@ class Paypal(MCC_Parser):
 		action = item['Type'].lower()
 		status = item['Status'].lower()
 
-		if action == 'general authorization' or status != 'completed':
+		if (action in {'general authorization', 'payment hold'}
+				or status != 'completed'):
 			return
+		if action in {'payment release', 'payment hold'}:
+			return self.parse_hold(item, tags, links)
 		if action == 'general currency conversion':
-			pass
+			assert item['Link'] is not None
+
+			if item['Link'] not in self.conversions:
+				self.conversions[item['Link']] = item
+				return
+
+			return self.parse_conversion(self.conversions.pop(item['Link']), item)
 
 		assert item['Sender'] is not None or item['Receiver'] is not None, f'{item}'
 
@@ -934,10 +1001,16 @@ class Paypal(MCC_Parser):
 
 		amt = format_regular_amount(item['Gross'])
 
-		txn = Transaction()
+		sender = self.account if item['Sender'] is None else Account.find(item['Sender'])
+		receiver = self.account if item['Receiver'] is None else Account.find(item['Receiver'])
 
-		txn.sender = self.account if item['Sender'] is None else item['Sender']
-		txn.receiver = self.account if item['Receiver'] is None else item['Receiver']
+		# txn = Transaction()
+		txn = Transaction() if (sender == self.account or sender.owner == 'external'
+								or (receiver != self.account and receiver.name == 'cash')) \
+			else Verification()
+
+		txn.sender = sender
+		txn.receiver = receiver
 		assert (txn.sender == self.account) != (txn.receiver == self.account), f'{txn.sender} {txn.receiver}'
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
@@ -945,15 +1018,17 @@ class Paypal(MCC_Parser):
 		txn.amount = abs(amt)
 		txn.unit = currency
 
-		txn.description = f'{item["Item Title"]} - {item["Name"]}'
+		txn.description = item['Name']
 		txn.location = item['Location']
 
 		if item['Tags'] is not None:
 			for tag in item['Tags'].split(';') if ';' in item['Tags'] else item['Tags'].split(','):
 				tags.setdefault(tag, []).append(txn)
 
-		fee = item['Fee'].strip()
-		fee = format_regular_amount(fee)
+		if item['Link'] is not None:
+			self.groups.setdefault(item['Link'], []).append(txn)
+
+		fee = format_regular_amount(item['Fee'])
 
 		if fee != 0:
 			assert fee < 0
@@ -978,6 +1053,10 @@ class Paypal(MCC_Parser):
 		return txn
 
 
-
+	def finish(self, records: list[Reportable], tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
+		assert not len(self.conversions), f'incomplete {len(self.conversions)}'
+		for idx, group in self.groups.items():
+			if len(group) > 1:
+				links.setdefault(None, []).append(group)
 
 
