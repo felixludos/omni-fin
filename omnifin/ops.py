@@ -183,7 +183,7 @@ def add_transactions(cfg: fig.Configuration):
 @fig.script('full-reset')
 def multiple_txn(cfg: fig.Configuration):
 
-	init_db(cfg)
+	create_db(cfg)
 
 	conn = cfg.pull('conn')
 

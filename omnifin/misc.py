@@ -19,7 +19,7 @@ def format_european_amount(amount: str) -> float:
 	if isinstance(amount, (int, float)):
 		return float(amount)
 	amount = amount.replace(' ', '').replace('�','').replace('�', '').replace(',', '.')
-	amount = abs(float(amount))
+	amount = float(amount)
 	return amount
 
 

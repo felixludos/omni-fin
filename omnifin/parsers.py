@@ -21,6 +21,22 @@ class Parser(fig.Configurable):
 		pass
 
 
+	@staticmethod
+	def create_transaction(source: Account, sender: Account | str = None, receiver: Account | str = None):
+		if sender is None:
+			sender = source
+		if receiver is None:
+			receiver = source
+		if not isinstance(sender, Account):
+			sender = Account.find(sender)
+		if not isinstance(receiver, Account):
+			receiver = Account.find(receiver)
+		if receiver == source and sender != source and sender.name != 'cash' and sender.owner != 'external':
+			return Verification(sender=sender, receiver=receiver)
+		return Transaction(sender=sender, receiver=receiver)
+
+
+
 class MCC_Parser(Parser):
 	def extract_mcc_tags(self, tags: Iterable[str]):
 		existing = set()
@@ -53,10 +69,8 @@ class Amazon(MCC_Parser):
 
 
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
-		if isinstance(item['Receiver'], str):
-			txn = Transaction(sender=self.account, receiver=item['Receiver'])
-		else:
-			txn = Verification(sender=item['Sender'], receiver=self.account)
+
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		date = datetime.strptime(item['Transaction Date'], '%m/%d/%Y').date()
 		txn.date = date
@@ -84,18 +98,16 @@ class Bank99(MCC_Parser):
 
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		txn = Transaction()
+		amt = format_european_amount(item['Betrag'])
 
-		if item['Sender'] is None:
-			txn.sender = self.account
-			txn.receiver = item['Receiver']
-		else:
-			txn.sender = item['Sender']
-			txn.receiver = self.account
+		assert (item['Sender'] is None and amt <= 0) or (item['Receiver'] is None and amt >= 0), \
+			f'Invalid amount: {item}'
+
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Buchungsdatum'], '%Y-%m-%d').date()
 
-		txn.amount = abs(format_european_amount(item['Betrag']))
+		txn.amount = abs(amt)
 		txn.unit = 'eur'
 
 		txn.description = item['Notes']
@@ -114,17 +126,11 @@ class Bank99(MCC_Parser):
 class BECU(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-
-		txn = Transaction() if sender is None or sender.owner == 'external' \
-			else Verification()
-
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if item['Receiver'] is None else item['Receiver']
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
 
-		txn.amount = abs(format_regular_amount(item['Debit' if sender is None else 'Credit']))
+		txn.amount = abs(format_regular_amount(item['Debit' if item['Sender'] is None else 'Credit']))
 		txn.unit = 'usd'
 
 		txn.description = item['Notes']
@@ -142,13 +148,7 @@ class BECU(MCC_Parser):
 class BOA(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-
-		txn = Transaction() if sender is None or sender.owner == 'external' \
-			else Verification()
-
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if item['Receiver'] is None else item['Receiver']
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
 
@@ -171,20 +171,24 @@ class BOA(MCC_Parser):
 class CapitalOne(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-
-		txn = Transaction() if sender is None or sender.owner == 'external' \
-			else Verification()
-
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if item['Receiver'] is None else item['Receiver']
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Transaction Date'], '%Y-%m-%d').date()
 
-		txn.amount = abs(float(item['Debit' if sender is None else 'Credit']))
+		txn.amount = abs(float(item['Debit' if item['Sender'] is None else 'Credit']))
 		txn.unit = 'usd'
 
-		txn.description = item['Description']
+		notes = item['Description']
+		if notes is not None and '%out-asset' in notes:
+			received = notes.split(' %out-asset ')[-1].strip()
+			notes = notes.split(' %out-asset ')[0].strip()
+			terms = received.split(' ')
+			assert len(terms) == 2
+			num, cur = terms
+			txn.received_unit = cur
+			txn.received_amount = abs(float(num))
+
+		txn.description = notes
 		txn.location = item['Location']
 
 		if item['Tags'] is not None:
@@ -199,13 +203,7 @@ class CapitalOne(MCC_Parser):
 class USBank(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-
-		txn = Transaction() if sender is None or sender.owner == 'external' \
-			else Verification()
-
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if item['Receiver'] is None else item['Receiver']
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Date'], '%Y-%m-%d').date()
 
@@ -215,6 +213,7 @@ class USBank(MCC_Parser):
 		notes = item['Notes']
 		if notes is not None and '%out-asset' in notes:
 			received = notes.split(' %out-asset ')[-1].strip()
+			notes = notes.split(' %out-asset ')[0].strip()
 			terms = received.split(' ')
 			assert len(terms) == 2
 			num, cur = terms
@@ -240,19 +239,15 @@ class Commerzbank(MCC_Parser):
 
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-		receiver = Account.find(item['Receiver'])
+		amt = format_european_amount(item['Betrag'])
 
-		txn = Transaction() if (sender is None or sender.owner == 'external'
-								or (receiver is not None and receiver.name == 'cash')) \
-			else Verification()
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if receiver is None else receiver
+		assert amt >= 0 or txn.sender == self.account, f'Negative amount: {item}'
 
 		txn.date = datetime.strptime(item['Buchungstag'], '%d.%m.%Y').date()
 
-		txn.amount = format_european_amount(item['Betrag'])
+		txn.amount = abs(amt)
 		txn.unit = item['Währung']
 
 		txn.description = item['Notes']
@@ -271,19 +266,11 @@ class Commerzbank(MCC_Parser):
 class CostcoCredit(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-		receiver = Account.find(item['Receiver'])
-
-		txn = Transaction() if (sender is None or sender.owner == 'external'
-								or (receiver is not None and receiver.name == 'cash')) \
-			else Verification()
-
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if receiver is None else receiver
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
 
-		txn.amount = abs(float(item['Debit' if sender is None else 'Credit']))
+		txn.amount = abs(float(item['Debit' if item['Sender'] is None else 'Credit']))
 		txn.unit = 'usd'
 
 		txn.description = item['Description']
@@ -304,19 +291,16 @@ class DKB(MCC_Parser):
 
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-		receiver = Account.find(item['Receiver'])
 
-		txn = Transaction() if (sender is None or sender.owner == 'external'
-								or (receiver is not None and receiver.name == 'cash')) \
-			else Verification()
+		amt = format_european_amount(item['Betrag (€)'].replace('.', ''))
 
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if receiver is None else receiver
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
+
+		assert amt >= 0 or txn.sender == self.account, f'Negative amount: {item}'
 
 		txn.date = datetime.strptime(item['Buchungsdatum'], '%d.%m.%y').date()
 
-		txn.amount = format_european_amount(item['Betrag (€)'].replace('.', '').replace(',', '.'))
+		txn.amount = abs(amt)
 		txn.unit = 'eur'
 
 		txn.description = item['Notes']
@@ -335,15 +319,7 @@ class DKB(MCC_Parser):
 class Heritage(MCC_Parser):
 	def parse(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		sender = Account.find(item['Sender'])
-		receiver = Account.find(item['Receiver'])
-
-		txn = Transaction() if (sender is None or sender.owner == 'external'
-								or (receiver is not None and receiver.name == 'cash')) \
-			else Verification()
-
-		txn.sender = self.account if sender is None else sender
-		txn.receiver = self.account if receiver is None else receiver
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.date = datetime.strptime(item['Date'], '%m-%d-%Y').date()
 
@@ -505,10 +481,9 @@ class IBKR(Parser):
 
 		amt = self.to_number(item['Amount'])
 
-		txn = Transaction()
-
-		txn.sender = self.account if amt < 0 else 'tax'
-		txn.receiver = 'tax' if amt < 0 else self.account
+		txn = self.create_transaction(self.account,
+									  sender=self.account if amt < 0 else 'tax',
+									  receiver='tax' if amt < 0 else self.account)
 
 		txn.date = datetime.strptime(item['Date'], '%Y-%m-%d').date()
 
@@ -520,10 +495,8 @@ class IBKR(Parser):
 		return txn
 
 	def parse_transaction_tax(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
-		txn = Transaction()
 
-		txn.sender = self.account
-		txn.receiver = 'tax'
+		txn = self.create_transaction(self.account, sender=self.account, receiver='tax')
 
 		date = datetime.strptime(item['Date/Time'], '%Y-%m-%d, %H:%M:%S')#.date()
 		txn.date = date
@@ -548,10 +521,9 @@ class IBKR(Parser):
 
 		assert amt != 0, f'Zero interest: {item}'
 
-		txn = Transaction()
-
-		txn.sender = 'interest' if amt > 0 else self.account
-		txn.receiver = self.account if amt > 0 else 'institution'
+		txn = self.create_transaction(self.account,
+									  sender='interest' if amt > 0 else self.account,
+									  receiver=self.account if amt > 0 else 'institution')
 
 		txn.date = datetime.strptime(item['Date'], '%Y-%m-%d').date()
 
@@ -613,10 +585,7 @@ class IBKR(Parser):
 
 	def parse_dividend(self, item: dict, tags: dict[str, list[Tagged]], links: dict[str, list[list[Linkable]]]):
 
-		txn = Transaction()
-
-		txn.sender = 'dividend'
-		txn.receiver = self.account
+		txn = self.create_transaction(self.account, sender='dividend', receiver=self.account)
 
 		txn.date = datetime.strptime(item['Date'], '%Y-%m-%d').date()
 
@@ -632,25 +601,10 @@ class IBKR(Parser):
 		amt = item['Amount']
 		currency = item['Currency']
 
-		txn = Transaction() if amt < 0 else Verification()
+		assert 'Sender' in item and 'Receiver' in item
+		assert item['Sender'] is None or amt > 0
 
-		desc = item['Description']
-		if currency == 'EUR':
-			other = Account.find('bank99-gu')
-		elif 'advance' in desc.lower() or 'cancellation' in desc.lower():
-			other = Account.find('institution')
-		elif '%account ' in desc:
-			other = Account.find(desc.split('%account ')[-1].strip())
-		elif 'NATL FIN SVC LLC' in desc or 'FID BKG SVC LLC' in desc:
-			other = Account.find('fidelity')
-		elif 'HERITAGE' in desc:
-			other = Account.find('heritage')
-		# elif currency == 'USD':
-		# 	other = Account.find('bank99-3811')
-		else:
-			raise ValueError(f"Unknown account: {item}")
-
-		txn.sender, txn.receiver = (self.account, other) if amt < 0 else (other, self.account)
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
 		txn.amount = abs(amt)
 		txn.unit = currency
@@ -797,10 +751,9 @@ class Fidelity(Parser):
 		amt = format_regular_amount(item['Amount'])
 		currency = item['Currency'].strip()
 
-		txn = Transaction() if other.owner == 'external' or amt < 0 else Verification()
-
-		txn.sender = self.account if amt < 0 else other
-		txn.receiver = other if amt < 0 else self.account
+		txn = self.create_transaction(self.account,
+									  sender=self.account if amt < 0 else other,
+									  receiver=other if amt < 0 else self.account)
 
 		txn.date = datetime.strptime(item['Run Date'].strip(), '%m/%d/%Y').date()
 
@@ -824,13 +777,12 @@ class Fidelity(Parser):
 		quantity = format_regular_amount(item['Quantity'])
 		assert quantity == 0, f'{quantity}'
 
-		txn = Transaction()
-
 		amt = format_regular_amount(item['Amount'])
 		currency = item['Currency'].strip()
 
-		txn.sender = self.account if amt < 0 else target
-		txn.receiver = target if amt < 0 else self.account
+		txn = self.create_transaction(self.account,
+									  sender=self.account if amt < 0 else target,
+									  receiver=target if amt < 0 else self.account)
 
 		# assert amt < 0, f'{amt}'
 
@@ -858,7 +810,7 @@ class Fidelity(Parser):
 
 		assert amt == 0 or quantity == 0, f'{amt} vs {quantity}'
 
-		txn = Transaction(sender=source, receiver=self.account)
+		txn = self.create_transaction(self.account, sender=source, receiver=self.account)
 
 		txn.amount = amt if amt != 0 else quantity
 		txn.unit = currency if amt != 0 else symbol
@@ -922,10 +874,7 @@ class Paypal(MCC_Parser):
 	def parse_conversion(self, part1, part2):
 		assert part1['Link'] == part2['Link']
 
-		conversion = Transaction()
-
-		conversion.sender = self.account
-		conversion.receiver = self.account
+		conversion = Transaction(sender=self.account, receiver=self.account)
 
 		assert part1['Date'] == part2['Date']
 		conversion.date = datetime.strptime(part1['Date'], '%m/%d/%Y').date()
@@ -960,10 +909,9 @@ class Paypal(MCC_Parser):
 
 		assert ('release' in action and amt > 0) or ('hold' in action and amt < 0), f'{action} {amt}'
 
-		txn = Transaction()
-
-		txn.sender = self.account if amt < 0 else 'institution'
-		txn.receiver = 'institution' if amt < 0 else self.account
+		txn = self.create_transaction(self.account,
+									  sender=self.account if amt < 0 else 'institution',
+									  receiver='institution' if amt < 0 else self.account)
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
 
@@ -1001,16 +949,8 @@ class Paypal(MCC_Parser):
 
 		amt = format_regular_amount(item['Gross'])
 
-		sender = self.account if item['Sender'] is None else Account.find(item['Sender'])
-		receiver = self.account if item['Receiver'] is None else Account.find(item['Receiver'])
+		txn = self.create_transaction(self.account, sender=item['Sender'], receiver=item['Receiver'])
 
-		# txn = Transaction()
-		txn = Transaction() if (sender == self.account or sender.owner == 'external'
-								or (receiver != self.account and receiver.name == 'cash')) \
-			else Verification()
-
-		txn.sender = sender
-		txn.receiver = receiver
 		assert (txn.sender == self.account) != (txn.receiver == self.account), f'{txn.sender} {txn.receiver}'
 
 		txn.date = datetime.strptime(item['Date'], '%m/%d/%Y').date()
