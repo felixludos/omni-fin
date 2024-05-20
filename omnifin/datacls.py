@@ -92,7 +92,7 @@ class RecordBase:
 		items = self._table_row_data()
 		key_info = ", ".join(f"{key} = ?" for key in items.keys())
 		cmd = f'UPDATE {self._table_name} SET {key_info} WHERE {self._id_key} = ?'
-		cursor.execute(cmd, tuple(items.values()))
+		cursor.execute(cmd, (*list(items.values()), self.ID))
 		return cursor.lastrowid
 
 
@@ -176,7 +176,7 @@ class Record(RecordBase):
 
 	def update(self, *, cursor=None):
 		ID = super().update(cursor=cursor)
-		assert self.ID == ID, f'invalid ID: {ID} != {self.ID}'
+		# assert self.ID == ID, f'invalid ID: {ID} != {self.ID}'
 		return ID
 
 

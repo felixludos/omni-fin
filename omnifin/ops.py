@@ -5,7 +5,7 @@ from .imports import *
 from .misc import get_path, load_db, load_item_file
 from .building import init_db
 from .parsers import Parser
-from .datacls import Record, Asset, Account, Report, Tag, Transaction, Tagged, Linkable, Reportable
+from .datacls import Record, Asset, Account, Report, Tag, Transaction, Tagged, Linkable, Reportable, Verification
 
 
 @fig.component('sqlite')
@@ -204,15 +204,89 @@ def multiple_txn(cfg: fig.Configuration):
 		with cfg.silence(True):
 			add_transactions(item)
 
+	manuals_path = cfg.pull('manuals-path', None)
+	if manuals_path is not None:
+		report = Report(category='manual', description=f'from {manuals_path}')
+
+		manuals = load_yaml(manuals_path)
+		if len(manuals) > 0:
+			report.write()
+
+		for manual in manuals:
+			typ = manual.pop('type', 'txn')
+			txn = Transaction(**manual) if typ == 'txn' else Verification(**manual)
+			txn.write(report)
+
 	cfg.print(f'Finished writing all transactions, now committing changes to database.')
 	conn.commit()
 	cfg.print(f'Committed all written records.')
 
 
 
+# @fig.script('verify')
+def verify_internal_transactions(cfg: fig.Configuration):
+	conn = cfg.pull('conn')
+	report = create_report(cfg)
+
+	if report.category is None:
+		report.category = 'auto-verify'
+	report.write()
+	cfg.print(f'Using report: {report}')
+
+	year = cfg.pull('year', None)
+	quarter = cfg.pull('quarter', None)
 
 
+	vers = list(Verification.find_all())
+	txns = list(Transaction.find_all())
 
+	internals = [txn for txn in txns if
+				 txn.sender.owner != 'external' and txn.receiver.owner != 'external' and txn.sender != txn.receiver
+				 and txn.sender.name != 'cash' and txn.receiver.name != 'cash']
+
+	cfg.print(f'Verifying {len(txns)} transactions and {len(vers)} verifications: {len(internals)} internal txns.')
+
+	available = vers.copy()
+	matches = []
+	missing = []
+
+	for txn in [txn for txn in internals if txn.date.year == 2023]:
+		candidates = [v for v in available if v.amount == (
+			txn.amount if txn.received_amount is None else txn.received_amount) and v.sender == txn.sender and v.receiver == txn.receiver]
+		if len(candidates) == 1:
+			match = candidates[0]
+			available.remove(match)
+			matches.append((txn, match))
+		elif len(candidates) > 1:
+			date = txn.date
+			diffs = sorted(candidates, key=lambda v: abs((v.date - date).days))
+			available.remove(diffs[0])
+			matches.append((txn, diffs[0]))
+		else:
+			missing.append(txn)
+
+	cfg.print(f'Found {len(matches)} matches and {len(missing)} missing transactions, '
+			  f'with {len(available)} verifications left.')
+
+	# cfg.print('Transactions')
+	# tbl = [(i, str(txn)) for i, txn in enumerate(missing)]
+	tbl = [(i, txn.date.strftime("%d-%b%y"), colorize(txn.sender.name, 'blue'),
+			txn.amount, colorize(txn.unit, 'green'), colorize(txn.receiver.name, 'blue'),
+			txn.received_amount, None if txn.received_unit is None else colorize(txn.received_unit, 'green'))
+		   for i, txn in enumerate(missing)]
+	cfg.print(tabulate(tbl, headers=['#', 'Date', 'Sender', 'Amount', 'Unit', 'Receiver', 'Received', 'Received Unit']))
+
+	cfg.print()
+
+	# cfg.print('Verifications:')
+	# tbl = [(i, str(ver)) for i, ver in enumerate(available)]
+	tbl = [(i, ver.date.strftime("%d-%b%y"), colorize(ver.sender.name, 'blue'),
+			ver.amount, colorize(ver.unit, 'green'), colorize(ver.receiver.name, 'blue'),
+			txn.received_amount, None if ver.received_unit is None else colorize(ver.received_unit, 'green'))
+		   for i, ver in enumerate(available)]
+	cfg.print(tabulate(tbl, headers=['#', 'Date', 'Sender', 'Amount', 'Unit', 'Receiver', 'Received', 'Received Unit']))
+
+	cfg.print()
 
 
 

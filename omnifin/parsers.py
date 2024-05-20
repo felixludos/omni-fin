@@ -930,7 +930,7 @@ class Paypal(MCC_Parser):
 		status = item['Status'].lower()
 
 		if (action in {'general authorization', 'payment hold'}
-				or status != 'completed'):
+				or status != 'completed' or item['Link'] == 'X'):
 			return
 		if action in {'payment release', 'payment hold'}:
 			return self.parse_hold(item, tags, links)
