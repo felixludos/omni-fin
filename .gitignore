@@ -12,6 +12,30 @@ notebooks/
 cloud_data/
 local_data/
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local data
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+
 # C extensions
 *.so
 

@@ -1,5 +1,0 @@
-omnibelt
-omnifig
-sqlite
-python-dateutil
-pandas

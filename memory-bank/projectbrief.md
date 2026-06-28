@@ -45,3 +45,6 @@ Omnifin is designed with a dual-interface architecture, providing two primary wa
 * Initialize the Vite frontend (`frontend/`) and configure `package.json` with `concurrently` for the `npm run dev` command.
 * Set up the Vite proxy to route `/api` to port 8000.
 * Build the data-table views for manual overrides and visualization widgets for cross-currency net worth.
+
+
+ok give me a fully uptodate version of the code for this sqlite + python setup across however many files it would most sense to implement this to seed the design for the autonomous coding agents.
