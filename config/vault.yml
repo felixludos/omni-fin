@@ -1,8 +1,0 @@
-
-#root: db\vault
-
-db: db/vault/omnifin.db
-
-init-accounts: db/vault/accounts.yml
-init-assets: db/vault/assets.yml
-
