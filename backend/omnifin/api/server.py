@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Query
@@ -17,7 +18,17 @@ app = FastAPI(title="Omnifin API", version="0.1.0")
 
 
 def db_path() -> str:
-    return os.environ.get(DB_ENV, "omnifin.db")
+    val = os.environ.get(DB_ENV)
+    if val:
+        return val
+    
+    # server.py is in backend/omnifin/api/
+    # parents[0]: backend/omnifin/api
+    # parents[1]: backend/omnifin
+    # parents[2]: backend
+    # parents[3]: root
+    repo_root = Path(__file__).resolve().parents[3]
+    return str(repo_root / "cloud_data" / "omnifin.db")
 
 
 def serialize(obj: Any) -> Any:
