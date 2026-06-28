@@ -209,12 +209,12 @@ high level types
 import uuid6
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator, PrivateAttr
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 import sqlite3
 
 
 class Tagable(BaseModel):
-	def tags(self) -> list["Tag"]:
+	def tags(self) -> Iterable["Tag"]:
 		raise NotImplementedError("This method should be implemented to return associated tags.")
 
 	def add_tags(self, *tags: "Tag" | str) -> None:
@@ -225,6 +225,9 @@ class Tagable(BaseModel):
 
 
 class Commentable(BaseModel):
+	def comments(self) -> Iterable["Comment"]:
+		raise NotImplementedError("This method should be implemented to return associated comments.")
+
 	def comment(self, content: "Comment" | str) -> None:
 		raise NotImplementedError("This method should be implemented to add a comment.")
 
@@ -254,10 +257,10 @@ class Account(Tagable):
 	def associated(self) -> Iterable["Entity"]:
 		raise NotImplementedError("This method should be implemented to return associated entities.")
 
-	def add_entities(self, *entities: "Entity" | str) -> None:
+	def add_owners(self, *owners: "Entity" | str) -> None:
 		raise NotImplementedError("This method should be implemented to add associated entities.")
 	
-	def remove_entities(self, *entities: "Entity") -> None:
+	def remove_owners(self, *owners: "Entity") -> None:
 		raise NotImplementedError("This method should be implemented to remove associated entities.")
 
 
