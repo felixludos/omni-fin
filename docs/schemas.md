@@ -19,7 +19,7 @@ CREATE TABLE assets (
     symbol TEXT PRIMARY KEY,       -- 'USD', 'EUR', 'AAPL', 'BTC' (must be unique)
     name TEXT NOT NULL,
     asset_class TEXT NOT NULL,      -- 'fiat', 'equity', 'crypto', 'bond', 'etf'
-	report_id BLOB NOT NULL,        -- UUIDv7 of report when this asset was inserted
+	report_id BLOB,        -- UUIDv7 of report when this asset was inserted
 	FOREIGN KEY(report_id) REFERENCES report(report_id)
 ) STRICT;
 
@@ -29,8 +29,8 @@ CREATE TABLE accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,            -- 'internal', 'external', 'merchant'
     institution TEXT,
-	report_id BLOB NOT NULL,        -- UUIDv7 of report when this account was inserted
-	FOREIGN KEY(report_id) REFERENCES report(report_id) ON DELETE CASCADE
+	report_id BLOB,        -- UUIDv7 of report when this account was inserted
+	FOREIGN KEY(report_id) REFERENCES report(report_id)
 ) STRICT;
 
 
@@ -40,10 +40,10 @@ CREATE TABLE statements (
     account_id BLOB NOT NULL,
     asset_symbol TEXT NOT NULL,    -- Track balance per asset (e.g., cash balance vs stock balance)
     balance REAL NOT NULL,
-	report_id BLOB NOT NULL,        -- UUIDv7 of report when this statement was inserted
+	report_id BLOB,        -- UUIDv7 of report when this statement was inserted
     FOREIGN KEY(account_id) REFERENCES accounts(account_id),
     FOREIGN KEY(asset_symbol) REFERENCES assets(symbol),
-	FOREIGN KEY(report_id) REFERENCES report(report_id) ON DELETE CASCADE
+	FOREIGN KEY(report_id) REFERENCES report(report_id)
 ) STRICT;
 
 
@@ -56,24 +56,12 @@ CREATE TABLE transfers (
     asset_symbol TEXT NOT NULL,    -- References assets(symbol)
     amount REAL NOT NULL,        -- Always positive
 	raw_hash BLOB,          -- Hash of the original source data (e.g., CSV row)
-	report_id BLOB NOT NULL,        -- UUIDv7 of report when this transfer was inserted
+	report_id BLOB,        -- UUIDv7 of report when this transfer was inserted
     FOREIGN KEY(asset_symbol) REFERENCES assets(symbol),
     FOREIGN KEY(sender_account_id) REFERENCES accounts(account_id),
     FOREIGN KEY(receiver_account_id) REFERENCES accounts(account_id),
-	FOREIGN KEY(report_id) REFERENCES report(report_id) ON DELETE CASCADE
+	FOREIGN KEY(report_id) REFERENCES report(report_id)
 ) STRICT;
-
--- skipped because events should be used instead
--- CREATE TABLE trade_conversions ( -- for trades and conversions where the sender receives an asset in return (trade), or the receiver receives a different asset than what is sent (conversion)
--- 	trade_id BLOB PRIMARY KEY,
---     transfer_id BLOB NOT NULL, -- the transfer that initiated the trade/conversion
--- 	receiver_account_id BLOB NOT NULL, -- Must be either the sender or receiver of the transfer (sender for trade, receiver for conversion)
--- 	received_amount REAL, -- Always positive (after FX conversion)
--- 	received_asset_symbol TEXT, -- References assets(symbol)
--- 	FOREIGN KEY(transfer_id) REFERENCES transfers(transfer_id) ON DELETE CASCADE,
--- 	FOREIGN KEY(receiver_account_id) REFERENCES accounts(account_id),
--- 	FOREIGN KEY(received_asset_symbol) REFERENCES assets(symbol)
--- ) STRICT;
 
 CREATE TABLE transfer_matches (
     source_transfer_id BLOB NOT NULL,
@@ -105,7 +93,7 @@ CREATE TABLE transfer_locations (
 ) STRICT;
 
 
-CREATE TABLE events ( -- for projects or any event that involves multiple transfers (such as all taxable events for 2026)
+CREATE TABLE events ( -- for projects or any event that involves multiple transfers (such as a group of taxable events for 2026, or trades or conversions)
     event_id BLOB PRIMARY KEY,
     name TEXT,
 	type TEXT NOT NULL
@@ -135,8 +123,8 @@ CREATE TABLE tags (
     tag_id BLOB PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
 	category TEXT,
-	report_id BLOB NOT NULL,        -- UUIDv7 of report when this tag was inserted
-	FOREIGN KEY(report_id) REFERENCES report(report_id) ON DELETE CASCADE
+	report_id BLOB,        -- UUIDv7 of report when this tag was inserted
+	FOREIGN KEY(report_id) REFERENCES report(report_id)
 ) STRICT;
 
 CREATE TABLE asset_tags (
@@ -168,8 +156,8 @@ CREATE TABLE comments (
 	comment_id BLOB PRIMARY KEY,
 	content TEXT NOT NULL,
 	created_at TEXT NOT NULL, -- ISO8601 string
-	report_id BLOB NOT NULL,        -- UUIDv7 of report when this comment was inserted
-	FOREIGN KEY(report_id) REFERENCES report(report_id) ON DELETE CASCADE
+	report_id BLOB,        -- UUIDv7 of report when this comment was inserted
+	FOREIGN KEY(report_id) REFERENCES report(report_id)
 ) STRICT;
 
 CREATE TABLE asset_comments (

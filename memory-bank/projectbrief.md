@@ -12,7 +12,7 @@ Omnifin is designed with a dual-interface architecture, providing two primary wa
 * **Goal:** Build the installable `omnifin` Python package and the `fin` CLI tool.
 * **Tasks:**
 * Initialize the monorepo structure and set up `pyproject.toml` (using Poetry or uv) to define the `fin` entry point pointing to a Click command group.
-* Implement the core Pydantic models (`Asset`, `UniversalEvent`) and configure SQLite with strict schemas.
+* Implement the core Pydantic models (`Asset`, `UniversalEvent`) and configure SQLite with strict schemas (use UUIDv7 for primary keys).
 * Write the `fin normalize` script to ingest Fidelity/IBKR CSVs, utilizing the local LLM for unknown assets/events, and outputting to the console and database.
 
 
