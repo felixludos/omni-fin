@@ -268,7 +268,7 @@ class Statement(Tagable, Commentable):
 	id: UUID
 	date: datetime
 	account: Account # lazy
-	asset: Asset # lazy
+	unit: Asset # lazy
 	balance: float
 	recorded: Optional[Report] = None # lazy
 
