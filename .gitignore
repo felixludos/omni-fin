@@ -8,6 +8,9 @@ db/
 extra/
 novo-data/
 fin-tx.db
+notebooks/
+cloud_data/
+local_data/
 
 # C extensions
 *.so

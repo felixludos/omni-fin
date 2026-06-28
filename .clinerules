@@ -1,0 +1,29 @@
+# Omnifin System Rules & Architecture
+
+## 1. Context & State Management (Memory Bank)
+- **Always start here:** Before beginning any task, read `memory-bank/projectbrief.md` and `memory-bank/activeContext.md` to restore your state.
+- **Continuous Documentation:** Upon completing a phase or significant milestone, update `memory-bank/progress.md`. If architectural decisions are made (e.g., database schema changes, routing updates), record them in `memory-bank/systemPatterns.md`.
+
+## 2. Monorepo Structure & Routing
+This is a dual-interface application. Always respect the boundaries:
+- **`backend/`**: Contains the installable Python package (`omnifin`).
+  - **CLI:** Commands are built with `click` and routed through `backend/omnifin/cli.py`.
+  - **API:** The FastAPI server is located at `backend/omnifin/api/server.py`.
+  - **Data:** SQLite databases and Pydantic models.
+- **`frontend/`**: Contains the Vite + React/TypeScript web application.
+- **Root Level:** Configuration for monorepo orchestration (`package.json` with concurrently).
+
+## 3. Python & CLI Guidelines
+- Use strictly typed Pydantic models for all data parsing and validation (especially for Fidelity/IBKR CSV ingest).
+- The CLI must be exposed globally as `fin` via the `[project.scripts]` definition in `pyproject.toml`.
+- When writing CLI commands, ensure they can run completely independent of the FastAPI server (headless execution).
+
+## 4. Frontend & Dev Server Guidelines
+- The Vite frontend must proxy all `/api` traffic to `http://127.0.0.1:8000` to eliminate CORS issues.
+- Never write direct backend fetching URLs (e.g., `fetch('http://localhost:8000/api/...')`). Always use relative paths (`fetch('/api/...')`).
+
+## 5. Definition of Done
+A feature is complete only when:
+1. The backend logic works via the `fin` CLI (if applicable).
+2. The endpoint is accessible via the Vite proxy.
+3. Strict typing (Python/TypeScript) passes without errors.
