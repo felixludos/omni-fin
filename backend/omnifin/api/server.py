@@ -9,12 +9,14 @@ from typing import Any
 from fastapi import FastAPI, Query
 from fastapi.encoders import jsonable_encoder
 
+from omnifin.api.ingest import router as ingest_router
 from omnifin.core.db import DatabaseSession
 from omnifin.models import Account, Asset, Investment, InvestmentSale, Report, Statement, Transfer
 
 DB_ENV = "OMNIFIN_DB"
 
 app = FastAPI(title="Omnifin API", version="0.1.0")
+app.include_router(ingest_router)
 
 
 def db_path() -> str:
