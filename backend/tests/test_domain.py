@@ -251,3 +251,36 @@ def test_sale_model_schema_has_descriptive_context():
     assert "basis" in properties["cost_basis"]["description"].lower()
     assert "acquir" in properties["acquisition"]["description"].lower()
     assert "example" in schema
+
+
+def test_transfer_settled_at_roundtrips_via_transfer_times(temp_db):
+    settled = datetime(2026, 1, 2, 15, 30, tzinfo=UTC)
+
+    with DatabaseSession(temp_db) as session:
+        report = Report(_session=session, name="Transfer Times Report")
+        usd = Asset(_session=session, symbol="USD")
+        acc = Account(_session=session, name="Cash")
+        transfer = Transfer(
+            _session=session,
+            sender=acc,
+            receiver=acc,
+            unit=usd,
+            amount=10.0,
+            date=datetime(2026, 1, 2, tzinfo=UTC),
+            settled_at=settled,
+        )
+
+        report.save(usd, acc, transfer)
+
+        row = session.execute(
+            "SELECT settled_at FROM transfer_times WHERE transfer_id = ?",
+            (transfer._db_pk_value(),),
+        ).fetchone()
+        assert row is not None
+        assert row["settled_at"] is not None
+
+    with DatabaseSession(temp_db) as session2:
+        saved = session2.get(Transfer, transfer.id)
+        assert saved is not None
+        assert saved.settled_at is not None
+        assert saved.settled_at.isoformat() == settled.isoformat()

@@ -792,6 +792,69 @@ class Transfer(Tagable, Commentable):
     raw_hash: Optional[bytes] = None
     recorded: Optional[Report] = None
     location: Optional["Location"] = None
+    settled_at: Optional[datetime] = None
+
+    def __init__(
+        self,
+        *,
+        _session: Any = None,
+        session: Any = None,
+        _from_db: bool = False,
+        _loaded: bool | None = None,
+        _readonly: bool = False,
+        **data: Any,
+    ):
+        super().__init__(
+            _session=_session,
+            session=session,
+            _from_db=_from_db,
+            _loaded=_loaded,
+            _readonly=_readonly,
+            **data,
+        )
+        if _from_db and self._session is not None:
+            self._load_transfer_times_row()
+
+    def _hydrate(self) -> bool:
+        hydrated = super()._hydrate()
+        if hydrated and self._session is not None:
+            self._load_transfer_times_row()
+        return hydrated
+
+    def _load_transfer_times_row(self) -> None:
+        if self._session is None:
+            return
+        row = self._session.execute(
+            "SELECT settled_at FROM transfer_times WHERE transfer_id = ?",
+            (self._db_pk_value(),),
+        ).fetchone()
+        if row is None:
+            return
+        settled_at = row.get("settled_at")
+        if settled_at is not None and self.settled_at is None:
+            if isinstance(settled_at, str):
+                try:
+                    settled_at = datetime.fromisoformat(settled_at)
+                except ValueError:
+                    pass
+            object.__setattr__(self, "settled_at", settled_at)
+
+    def _flush_relations(self, cursor: sqlite3.Cursor) -> None:
+        super()._flush_relations(cursor)
+        if self.settled_at is None:
+            cursor.execute(
+                "DELETE FROM transfer_times WHERE transfer_id = ?",
+                (self._db_pk_value(),),
+            )
+            return
+        cursor.execute(
+            """
+            INSERT INTO transfer_times (transfer_id, initiated_at, settled_at)
+            VALUES (?, NULL, ?)
+            ON CONFLICT(transfer_id) DO UPDATE SET settled_at = excluded.settled_at
+            """,
+            (self._db_pk_value(), to_db_value(self.settled_at)),
+        )
 
     def events(self) -> list["Event"]:
         return [obj for obj in self._merged_relation("events") if isinstance(obj, Event)]
