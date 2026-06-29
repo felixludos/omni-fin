@@ -339,4 +339,12 @@ class Comment(BaseModel):
 	content: str
 	recorded: Optional[Report] = None # lazy
 
+class Investment(Asset):
+	nyse_symbol: Optional[str] = None
+	ibkr_symbol: Optional[str] = None
+	identifier: Optional[str] = None
+	country: Optional[str] = None
+	fund_type: Optional[str] = None
+	fund_focus: Optional[str] = None
+
 ```

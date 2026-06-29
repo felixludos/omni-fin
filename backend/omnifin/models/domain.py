@@ -729,9 +729,7 @@ class Asset(Tagable):
     recorded: Optional[Report] = None
 
 
-class Investment(DomainModel):
-    symbol: str
-    name: Optional[str] = None
+class Investment(Asset):
     nyse_symbol: Optional[str] = None
     ibkr_symbol: Optional[str] = None
     identifier: Optional[str] = None

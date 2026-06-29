@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from omnifin.core.db import DatabaseSession
-from omnifin.models import Asset, Account, Report, Transfer, clear_global_identity_map
+from omnifin.models import Asset, Account, Investment, Report, Transfer, clear_global_identity_map
+from omnifin.core.registry import MODEL_SPECS
 from omnifin.core.errors import LedgerIntegrityError
 
 @pytest.fixture(autouse=True)
@@ -35,6 +36,18 @@ def test_identity_map_singleton():
         assert acc1 is acc2
         # According to current _merge_raw_data, existing values are kept if not from_db
         assert acc1.name == "Test Acc"
+
+
+def test_investment_inherits_asset_and_maps_to_investments_table():
+    inv = Investment(symbol="VWCE", name="Vanguard FTSE All-World UCITS ETF", country="IE")
+    assert isinstance(inv, Asset)
+    assert inv.symbol == "VWCE"
+    assert inv.name == "Vanguard FTSE All-World UCITS ETF"
+
+    spec = MODEL_SPECS["Investment"]
+    assert spec.table == "investments"
+    assert spec.fields["symbol"] == "symbol"
+    assert spec.fields["name"] == "name"
 
 def test_report_plan_and_save(temp_db):
     """Test that Report.plan and Report.save correctly persist a graph of objects."""
