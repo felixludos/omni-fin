@@ -31,6 +31,7 @@ type IngestRow = {
   status: 'pending' | 'processing' | 'processed' | 'error'
   checks: string[]
   error?: string | null
+  llm_error?: string | null
   interpretation?: RowInterpretation | null
   updated_at: string
 }
@@ -451,7 +452,7 @@ function App() {
                       <td>
                         <span className={`status-pill ${row.status}`}>{row.status}</span>
                       </td>
-                      <td>{row.interpretation?.summary || row.error || ''}</td>
+                      <td>{row.error || row.llm_error || row.interpretation?.summary || ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -469,6 +470,9 @@ function App() {
                 <p>
                   Checks: {selectedRow.checks.length === 0 ? 'none' : selectedRow.checks.join(' | ')}
                 </p>
+                {selectedRow.llm_error && (
+                  <p className="error-banner">LLM error: {selectedRow.llm_error}</p>
+                )}
                 <textarea
                   value={rowEditorText}
                   onChange={(event) => setRowEditorText(event.currentTarget.value)}

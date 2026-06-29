@@ -64,6 +64,7 @@ class RowState(BaseModel):
     status: Literal["pending", "processing", "processed", "error"] = "pending"
     checks: list[str] = Field(default_factory=list)
     error: str | None = None
+    llm_error: str | None = None
     interpretation: RowInterpretation | None = None
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -190,6 +191,7 @@ class IngestionJobManager:
                 if row.index in target:
                     row.status = "pending"
                     row.error = None
+                    row.llm_error = None
                     row.updated_at = utcnow()
             job.paused = False
             job.status = "running"
@@ -203,6 +205,7 @@ class IngestionJobManager:
             for row in job.rows:
                 row.status = "pending"
                 row.error = None
+                row.llm_error = None
                 row.updated_at = utcnow()
             job.paused = False
             job.status = "running"
@@ -316,7 +319,7 @@ class IngestionJobManager:
                 continue
 
             try:
-                interpretation = await _interpret_row_with_llm(job, next_row)
+                interpretation, llm_error = await _interpret_row_with_llm(job, next_row)
                 async with self._lock:
                     current_job = self._jobs.get(job_id)
                     if current_job is None:
@@ -326,6 +329,7 @@ class IngestionJobManager:
                     current_row.interpretation = interpretation
                     current_row.status = "processed"
                     current_row.error = None
+                    current_row.llm_error = llm_error
                     current_row.updated_at = utcnow()
                     current_job.updated_at = utcnow()
             except Exception as exc:  # pragma: no cover - defensive runtime guard
@@ -337,6 +341,7 @@ class IngestionJobManager:
                     current_row = self._require_row_locked(current_job, next_row.index)
                     current_row.status = "error"
                     current_row.error = str(exc)
+                    current_row.llm_error = None
                     current_row.updated_at = utcnow()
                     current_job.updated_at = utcnow()
 
@@ -360,7 +365,7 @@ class IngestionJobManager:
         self._tasks[job_id] = asyncio.create_task(self._run_job(job_id))
 
 
-async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> RowInterpretation:
+async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> tuple[RowInterpretation, str | None]:
     accounts, assets = _load_existing_context()
     prompt = _build_prompt(
         filename=job.filename,
@@ -389,13 +394,16 @@ async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> RowInterpret
             max_tokens=1200,
             timeout=90.0,
         )
-        return RowInterpretation(
-            summary=interpreted.summary,
-            confidence=interpreted.confidence,
-            objects=interpreted.objects,
+        return (
+            RowInterpretation(
+                summary=interpreted.summary,
+                confidence=interpreted.confidence,
+                objects=interpreted.objects,
+            ),
+            None,
         )
-    except Exception:
-        return _fallback_interpretation(job.filename, row)
+    except Exception as exc:
+        return _fallback_interpretation(job.filename, row), f"{type(exc).__name__}: {exc}"
 
 
 def _build_prompt(

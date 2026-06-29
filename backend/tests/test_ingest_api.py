@@ -40,24 +40,27 @@ def client(monkeypatch):
         except ValueError:
             amount = 1.0
 
-        return ingest.RowInterpretation(
-            summary=f"fake row {row.index}",
-            confidence=0.8,
-            objects=[
-                ingest.ProposedObject(object_type="asset", data={"symbol": symbol}),
-                ingest.ProposedObject(
-                    object_type="transfer",
-                    data={
-                        "date": row.edited_row.get("date", "2026-01-01"),
-                        "amount": abs(amount) if amount != 0 else 1.0,
-                        "unit_symbol": symbol,
-                        "sender_account_name": "External",
-                        "receiver_account_name": "Internal",
-                        "event_type": "transfer",
-                        "event_name": f"row-{row.index}",
-                    },
-                ),
-            ],
+        return (
+            ingest.RowInterpretation(
+                summary=f"fake row {row.index}",
+                confidence=0.8,
+                objects=[
+                    ingest.ProposedObject(object_type="asset", data={"symbol": symbol}),
+                    ingest.ProposedObject(
+                        object_type="transfer",
+                        data={
+                            "date": row.edited_row.get("date", "2026-01-01"),
+                            "amount": abs(amount) if amount != 0 else 1.0,
+                            "unit_symbol": symbol,
+                            "sender_account_name": "External",
+                            "receiver_account_name": "Internal",
+                            "event_type": "transfer",
+                            "event_name": f"row-{row.index}",
+                        },
+                    ),
+                ],
+            ),
+            None,
         )
 
     monkeypatch.setattr(ingest, "_interpret_row_with_llm", fake_interpretation)
@@ -132,3 +135,24 @@ def test_ingest_job_lifecycle_and_commit(client, test_db_path):
     with DatabaseSession(test_db_path) as session:
         transfers = session.all(Transfer, limit=20)
         assert len(transfers) == 1
+
+
+def test_ingest_surfaces_llm_error_to_row(client, monkeypatch):
+    async def llm_failure_with_fallback(job, row):
+        return ingest._fallback_interpretation(job.filename, row), "RuntimeError: mocked llm failure"
+
+    monkeypatch.setattr(ingest, "_interpret_row_with_llm", llm_failure_with_fallback)
+
+    csv_text = "date,symbol,amount\n2026-01-01,USD,10\n"
+    create_response = client.post(
+        "/api/ingest/jobs",
+        json={"filename": "errors.csv", "csv_text": csv_text},
+    )
+    assert create_response.status_code == 200
+    job_id = create_response.json()["id"]
+
+    final_job = _wait_for_done(client, job_id)
+    row = final_job["rows"][0]
+    assert row["status"] == "processed"
+    assert row["llm_error"] == "RuntimeError: mocked llm failure"
+    assert row["interpretation"] is not None
