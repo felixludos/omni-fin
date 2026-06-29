@@ -12,6 +12,7 @@ from omnifin.ingest.normalize import (
     infer_asset_symbol,
     normalize_csv_file,
     NormalizationResult,
+    write_normalized_csv,
 )
 
 def test_parse_number():
@@ -123,3 +124,42 @@ def test_normalize_csv_file(tmp_path):
     # 2 Accounts (Internal + External), 3 Assets (AAPL, USD, MSFT), 3 Transfers
     # Total objects: 2 + 3 + 3 = 8
     assert len(result.objects) == 8
+
+
+def test_normalize_csv_file_filters_non_taxable_and_falls_back_amounts(tmp_path):
+    csv_content = (
+        "Trade Date,Type,Quantity,Description\n"
+        "2026-01-01,metadata,,Header row\n"
+        "2026-01-02,transfer,2,Deposit\n"
+        "2026-01-03,transfer,,No amount data\n"
+    )
+    p = tmp_path / "fallbacks.csv"
+    p.write_text(csv_content, encoding="utf-8")
+
+    result = normalize_csv_file(
+        p,
+        account_name="Test Account",
+        include_non_taxable=False,
+    )
+
+    assert len(result.rows) == 2
+    assert [row.amount for row in result.rows] == [2.0, 1.0]
+    assert all(row.asset_symbol == "USD" for row in result.rows)
+
+
+def test_write_normalized_csv_roundtrip(tmp_path):
+    csv_content = (
+        "Trade Date,Symbol,Amount,Description\n"
+        "2026-01-01,AAPL,100.00,Bought shares\n"
+    )
+    source = tmp_path / "source.csv"
+    source.write_text(csv_content, encoding="utf-8")
+
+    result = normalize_csv_file(source, account_name="Test Account")
+    output = tmp_path / "normalized.csv"
+    write_normalized_csv(result.rows, output)
+
+    assert output.exists()
+    output_text = output.read_text(encoding="utf-8")
+    assert "row_number,event_type,date,asset_symbol,amount,sender_account,receiver_account,raw_hash_hex,notes" in output_text
+    assert "trade_buy" in output_text

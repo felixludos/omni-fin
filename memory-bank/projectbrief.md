@@ -1,50 +1,60 @@
-Omnifin is designed with a dual-interface architecture, providing two primary ways to interact with the system:
+# Omnifin Project Brief (Updated 2026-06-29)
 
-1. **Command Line Interface (`fin`):** An installable Python package providing a globally accessible CLI entry point. This allows you to directly run data pipelines, normalization scripts, and tax calculations from your terminal (e.g., `fin normalize data.csv --broker ibkr`) without needing to spin up a server.
-2. **Full-Stack Web Application:** A unified monorepo containing a Vite frontend and a FastAPI backend. For local development, the entire stack boots up with a single command (`npm run dev`). This utilizes a tool like `concurrently` to launch both servers simultaneously, with the Vite dev server proxying `/api` requests to FastAPI to eliminate CORS issues.
+## Current Architecture
 
----
+Omnifin is a dual-interface monorepo:
 
-### **Omnifin Implementation Plan**
+1. Python backend package (`backend/omnifin`) with:
+	 - Click CLI (`fin`)
+	 - FastAPI server (`/api/*` endpoints)
+	 - SQLite schema and session layer
+	 - High-level domain model with identity map and staged relations
+2. Vite/TypeScript frontend (`frontend`) consuming `/api`.
 
-#### **Phase 1: CLI Foundation & Normalization (Milestone 1)**
+## Current Backend Maturity
 
-* **Goal:** Build the installable `omnifin` Python package and the `fin` CLI tool.
-* **Tasks:**
-* Initialize the monorepo structure and set up `pyproject.toml` (using Poetry or uv) to define the `fin` entry point pointing to a Click command group.
-* Implement the core Pydantic models (`Asset`, `UniversalEvent`) and configure SQLite with strict schemas (use UUIDv7 for primary keys).
-* Write the `fin normalize` script to ingest Fidelity/IBKR CSVs, utilizing the local LLM for unknown assets/events, and outputting to the console and database.
+- Foundation is solid for a seed repo:
+	- strict SQLite schema with foreign keys and relation tables.
+	- explicit domain-to-SQL mapping in `core/registry.py`.
+	- `Report.plan()` and `Report.save()` share the same graph traversal logic.
+	- normalization pipeline produces domain objects from unknown CSV shapes.
+- Test suite quality improved and currently passing:
+	- `30 passed` in `backend/tests`.
+	- deterministic API/CLI/domain/normalize coverage with stronger assertions.
 
+## High-Impact Gaps
 
+1. Tax engines are scaffolds only (US/DE warnings, no lot matching).
+2. API is list-focused; object retrieval/mutation routes are mostly absent.
+3. Reconciliation engine exists as scaffold; no production-grade matching logic yet.
+4. No migration lifecycle strategy beyond schema bootstrap.
+5. No large-fixture performance guardrails for ingest.
 
-#### **Phase 2: The Core Ledger & Reconciliation Engine**
+## Agent-Friendly Working Notes
 
-* **Goal:** Implement the business logic for the four pillars (Transactions, Assets, Statements, Accounts).
-* **Tasks:**
-* Expand the CLI with commands for statement ingestion (`fin ingest-statement`).
-* Build the reconciliation algorithm to validate account balances against ingested events.
-* Implement the `TransferMatch` logic to automatically detect and link transfers between internal accounts.
+- Keep DB operations explicit and session-bound; avoid introducing hidden global state.
+- Preserve identity-map semantics when adding model constructors or coercions.
+- When adding new relations, update all of:
+	- `core/registry.py` (`MODEL_SPECS`, `RELATION_SPECS`, SQL mappings)
+	- schema DDL
+	- domain model relation accessors/staging
+	- tests for plan/save and relation flushes
+- Prefer adding tests alongside each new command/endpoint branch.
 
+## Execution Roadmap
 
+### Phase A (Core Correctness)
+1. Implement transaction rollback tests and migration smoke tests.
+2. Add API object-by-id routes and 404-path tests.
+3. Add relation-heavy integration fixtures (tags/comments/events/entities).
 
-#### **Phase 3: Dual-Jurisdiction Tax Engine**
+### Phase B (Tax/Reconciliation)
+1. Implement lot model and matching primitives.
+2. Build US wash-sale and holding-period classification.
+3. Build German FIFO + Vorabpauschale + partial exemption rules.
+4. Add deterministic fixture-based tax test vectors.
 
-* **Goal:** Calculate taxable events for both US and German jurisdictions.
-* **Tasks:**
-* Develop the US module: implement FIFO/LIFO lot matching, Wash Sale tracking, and short/long-term capital gains.
-* Develop the German module: implement strict FIFO, asset-class specific *Teilfreistellung* exemptions, and accumulating ETF *Vorabpauschale* logic.
-* Expose these calculations via a new CLI command (`fin calculate-taxes --year 2026`).
-
-
-
-#### **Phase 4: Full-Stack Integration & UI**
-
-* **Goal:** Transition to the unified web interface for family-wide financial tracking.
-* **Tasks:**
-* Implement the FastAPI backend (`backend/omnifin/api/server.py`) to serve the SQLite data, and expose it via the CLI (`fin serve`).
-* Initialize the Vite frontend (`frontend/`) and configure `package.json` with `concurrently` for the `npm run dev` command.
-* Set up the Vite proxy to route `/api` to port 8000.
-* Build the data-table views for manual overrides and visualization widgets for cross-currency net worth.
-
-
-ok give me a fully uptodate version of the code for this sqlite + python setup across however many files it would most sense to implement this to seed the design for the autonomous coding agents.
+### Phase C (Productization)
+1. Add import provenance and rollback workflows.
+2. Add benchmark tests for large CSV ingest throughput.
+3. Expand frontend views for reconciliation and auditability.

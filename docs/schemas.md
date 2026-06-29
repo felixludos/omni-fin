@@ -1,5 +1,7 @@
 
-
+> [!WARNING]
+> This file is historical design material and is not the authoritative runtime schema.
+> Use `backend/omnifin/db/schema.sql` as the source of truth, plus `backend/omnifin/core/registry.py` for domain-to-SQL field mappings.
 
 ```sql
 PRAGMA foreign_keys = ON;

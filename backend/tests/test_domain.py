@@ -2,19 +2,11 @@ from __future__ import annotations
 
 import pytest
 from uuid import UUID
-from datetime import datetime
+from datetime import UTC, datetime
+from pydantic import ValidationError
 
 from omnifin.core.db import DatabaseSession
-from omnifin.models import (
-    Asset, 
-    Account, 
-    Report, 
-    Transfer, 
-    Location, 
-    Tag, 
-    Comment, 
-    clear_global_identity_map
-)
+from omnifin.models import Asset, Account, Report, Transfer, clear_global_identity_map
 from omnifin.core.errors import LedgerIntegrityError
 
 @pytest.fixture(autouse=True)
@@ -59,7 +51,7 @@ def test_report_plan_and_save(temp_db):
             receiver=acc_b, 
             unit=usd, 
             amount=100.0,
-            date=datetime.now()
+            date=datetime.now(UTC)
         )
         
         # 1. Plan
@@ -102,7 +94,7 @@ def test_lazy_hydration(temp_db):
             receiver=acc, 
             unit=usd, 
             amount=10.0,
-            date=datetime.now()
+            date=datetime.now(UTC)
         )
         transfer_id = transfer.id
         
@@ -119,38 +111,54 @@ def test_lazy_hydration(temp_db):
         assert t._loaded is True
 
 def test_integrity_constraints(temp_db):
-    """Test that missing required fields trigger LedgerIntegrityError."""
+    """Asset.symbol is required and should fail pydantic validation when missing."""
     with DatabaseSession(temp_db) as session:
-        report = Report(_session=session, name="Error Report")
-        
-        # Since Pydantic validates on instantiation, we test a field 
-        # that might be optional in Pydantic but required in the spec.
-        # If all required are in Pydantic, we test the ValidationError.
-        with pytest.raises(Exception): # Either ValidationError or LedgerIntegrityError
+        with pytest.raises(ValidationError):
             Asset(_session=session, symbol=None)
 
+
+def test_plan_invalid_missing_required_fields_and_save_raises(temp_db):
+    with DatabaseSession(temp_db) as session:
+        report = Report(_session=session, name="Invalid Transfer Report")
+        usd = Asset(_session=session, symbol="USD")
+        sender = Account(_session=session, name="Sender")
+        receiver = Account(_session=session, name="Receiver")
+        transfer = Transfer(
+            _session=session,
+            sender=sender,
+            receiver=receiver,
+            unit=usd,
+            date=datetime.now(UTC),
+            amount=None,
+        )
+
+        plan = report.plan(transfer)
+        assert not plan.is_valid
+        assert any("missing required fields" in message for message in plan.errors)
+        assert any(record.model == "Transfer" and record.action == "error" for record in plan.records)
+
+        with pytest.raises(LedgerIntegrityError):
+            report.save(transfer)
+
 def test_tag_and_comment_persistence(temp_db):
-    """Test that tags and comments are persisted via the Report."""
+    """Test that tags/comments are persisted and relation planning is populated."""
     with DatabaseSession(temp_db) as session:
         report = Report(_session=session, name="Tag Test")
         acc = Account(_session=session, name="Acc")
-        
-        # Add tag
+
         acc.add_tags("tax", "investment")
-        # Add comment
         acc.comment("This is a test comment")
-        
-        # To avoid FK errors, we must ensure tags and comments are saved.
-        # Report.save collects the graph, but we should be explicit if needed.
-        # Actually, report.save(acc) should work if the order is correct.
-        # Let's ensure we pass them if they are not being picked up.
-        
-        # We can check if they are in the staged_adds.
+
         tags = acc.tags()
         comments = acc.comments()
-        
+
+        plan = report.plan(acc, *tags, *comments)
+        assert plan.is_valid
+        assert plan.relation_inserts.get("account_tags") == 2
+        assert plan.relation_inserts.get("account_comments") == 1
+
         report.save(acc, *tags, *comments)
-        
+
     with DatabaseSession(temp_db) as session2:
         acc_saved = session2.get(Account, acc.id)
         assert len(acc_saved.tags()) == 2

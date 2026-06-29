@@ -1,54 +1,70 @@
-# Omnifin Test Plan
+# Omnifin Backend Test Plan (Updated 2026-06-29)
 
-## 1. Objectives
-The goal is to ensure the reliability and correctness of the Omnifin financial tracking system through a layered testing strategy:
-- **Unit Tests**: Validate individual functions and components in isolation.
-- **Integration Tests**: Validate the interaction between multiple components (e.g., Ingest -> Model -> DB).
-- **API Tests**: Ensure REST endpoints return correct data and handle errors gracefully.
-- **CLI Tests**: Verify the `fin` command-line interface behaves as expected.
+## 1. Current Test Suite Status
+- Command: `python -m pytest -q`
+- Result: `30 passed`
+- Scope covered:
+  - API endpoint behavior and parameter validation.
+  - CLI command behavior (`init-db`, `normalize`, `tax`, `serve`).
+  - Domain identity map behavior, plan/save integrity, relation staging.
+  - Normalization parsing/inference and CSV output writing.
 
-## 2. Key Features to Validate
+## 2. What Is Covered Well
 
-### A. Data Ingestion & Normalization (`backend/omnifin/ingest/normalize.py`)
-The generic CSV parser relies on several heuristics that must be robustly tested.
-- **Number Parsing**:
-    - Standard floats (`123.45`)
-    - Comma-separated thousands (`1,234.56`)
-    - Currency symbols (`$100`, `€50`)
-    - Accounting format parentheses for negatives (`(100.00)`)
-- **Date Parsing**:
-    - ISO format (`2026-01-01`)
-    - US format (`01/01/2026`, `01/01/26`)
-    - European format (`01.01.2026`)
-- **Inference Logic**:
-    - `infer_event_type`: Correctly identifying dividends, interest, fees, buys, sells, and transfers.
-    - `infer_asset_symbol`: Correctly identifying tickers and fiat currencies (USD, EUR, etc.).
-    - `infer_amount`/`infer_quantity`: Correctly picking the right column.
-- **End-to-End Normalization**:
-    - Processing a sample CSV and verifying the resulting `Report`, `Account`, `Asset`, and `Transfer` objects.
+### A. API Layer (`backend/omnifin/api/server.py`)
+- Endpoints covered: `/api/health`, `/api/assets`, `/api/accounts`, `/api/statements`, `/api/transfers`, `/api/reports`.
+- Query validation covered:
+  - `limit` lower bound and upper bound.
+  - `offset` lower bound.
+- Pagination behavior covered with deterministic seeded data and strict assertions.
 
-### B. Core Domain & Persistence (`backend/omnifin/models/`, `backend/omnifin/core/db/`)
-- **Identity Map**: Ensure scalar coercion works (e.g., `Asset("USD") is Asset("USD")`).
-- **Persistence**:
-    - `Report.plan()` and `Report.save()` correctly stage and persist nested graphs.
-    - Lazy hydration of related objects from the database.
-    - Integrity constraints (e.g., missing required fields).
+### B. CLI Layer (`backend/omnifin/cli/main.py`)
+- Command success paths covered for:
+  - `init-db`
+  - `normalize` (plain output, JSON plan output, CSV output, save flow)
+  - `tax` (US/DE JSON payload shape)
+  - `serve` (uvicorn invocation arguments and DB env propagation via mocking)
 
-### C. API Layer (`backend/omnifin/api/server.py`)
-- **Endpoints**:
-    - GET /api/reports: List available reports.
-    - GET /api/reports/{id}: Retrieve a specific report.
-    - GET /api/assets: List tracked assets.
-- **Error Handling**: Return 404 for missing resources, 422 for invalid input.
+### C. Domain Layer (`backend/omnifin/models/domain.py`)
+- Identity map singleton behavior for natural keys and UUID keys.
+- `Report.plan()` and `Report.save()` on nested object graphs.
+- Lazy hydration from persisted rows.
+- Required field enforcement in plan and save paths.
+- Staged tag/comment relation plan counts and persistence.
 
-### D. CLI Interface (`backend/omnifin/cli/main.py`)
-- **Commands**:
-    - `fin normalize <file>`: Successfully parses a file and (optionally) saves to DB.
-    - `fin serve`: Starts the FastAPI server.
-- **Arguments**: Validation of required flags and options.
+### D. Ingest Normalization (`backend/omnifin/ingest/normalize.py`)
+- `parse_number`, `parse_date`, key/value discovery helpers.
+- Event/asset inference heuristics.
+- Fallback logic: amount -> quantity -> minimum safe transfer amount.
+- Optional filtering for non-taxable rows.
+- CSV writing of normalized rows.
 
-## 3. Test Execution Strategy
-- **Framework**: `pytest`
-- **Mocks**: Use `unittest.mock` or `pytest-mock` for external dependencies.
-- **Database**: Use SQLite in-memory (`:memory:`) for fast, isolated tests.
-- **CI/CD**: All tests should run on every commit.
+## 3. Known Gaps / Risk Areas (Prioritized)
+
+### High Priority
+- No property-based tests for parser robustness under messy real-world CSV inputs.
+- No tests for concurrent write/read behavior or transaction rollback semantics under partial failures.
+- No API tests for future entity-by-id routes (not implemented yet).
+
+### Medium Priority
+- No contract tests for DB schema migrations over multiple versions.
+- Tax modules are scaffold-only and have no behavioral correctness tests beyond payload shape.
+- No performance regression tests for large CSV files.
+
+### Low Priority
+- No snapshot/golden-file tests for normalized output stability.
+- No mutation testing to measure assertion quality.
+
+## 4. Next Testing Iterations
+
+1. Add fuzz/property tests for normalization helpers and row-level coercion.
+2. Add transaction failure simulation tests for `Report.save()` rollback behavior.
+3. Add benchmark-style tests for normalization throughput on large CSV fixtures.
+4. Expand tax tests once lot matching and jurisdiction logic are implemented.
+5. Add CI quality gates for test runtime, linting, and coverage threshold.
+
+## 5. Testing Conventions For New Contributors/Agents
+- Keep tests deterministic: use per-test DB files and clear global identity maps.
+- Avoid broad exception assertions; assert exact exception type and key message content.
+- Prefer behavior assertions (specific payload shape/values) over generic status-only checks.
+- For CLI server commands, mock `uvicorn.run` to avoid blocking test execution.
