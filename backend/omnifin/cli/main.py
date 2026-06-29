@@ -63,6 +63,10 @@ def normalize_command(
             click.echo(row.model_dump_json())
 
     with DatabaseSession(db_path) as session:
+        # Attach session to all objects to allow database lookups during planning and saving
+        for obj in result.objects:
+            obj._session = session
+
         report = Report(_session=session, id=result.report.id, date=result.report.date, name=result.report.name, raw_hash=result.report.raw_hash)
         plan = report.plan(*result.objects)
         if json_plan:

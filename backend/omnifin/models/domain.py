@@ -38,7 +38,9 @@ GLOBAL_IDENTITY_MAP: dict[type, dict[Any, "DomainModel"]] = defaultdict(dict)
 
 
 def _safe_uuid(value: Any) -> Any:
-    if isinstance(value, (UUID, bytes, bytearray, memoryview)):
+    if value is None:
+        return None
+    if isinstance(value, (UUID, bytes, bytearray, memoryview, str)):
         try:
             return parse_uuid(value)
         except Exception:
