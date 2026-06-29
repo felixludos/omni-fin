@@ -724,9 +724,20 @@ class Report(Commentable):
 
 class Asset(Tagable):
     symbol: str
-    long_name: Optional[str] = None
+    name: Optional[str] = None
     category: Optional[str] = None
     recorded: Optional[Report] = None
+
+
+class Investment(DomainModel):
+    symbol: str
+    name: Optional[str] = None
+    nyse_symbol: Optional[str] = None
+    ibkr_symbol: Optional[str] = None
+    identifier: Optional[str] = None
+    country: Optional[str] = None
+    fund_type: Optional[str] = None
+    fund_focus: Optional[str] = None
 
 
 class Account(Tagable, Commentable):
@@ -826,7 +837,7 @@ class Comment(DomainModel):
 
 
 # Resolve forward references for Pydantic.
-for _model in [Report, Asset, Account, Statement, Transfer, Location, Event, Entity, Tag, Comment]:
+for _model in [Report, Asset, Investment, Account, Statement, Transfer, Location, Event, Entity, Tag, Comment]:
     _model.model_rebuild()
 
 

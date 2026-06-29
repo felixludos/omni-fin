@@ -19,7 +19,7 @@ CREATE TABLE report (
 CREATE TABLE assets (
     symbol TEXT PRIMARY KEY,       -- 'USD', 'EUR', 'AAPL', 'BTC' (must be unique)
     
-	long_name TEXT,
+	name TEXT,
     asset_class TEXT      -- 'fiat', 'equity', 'crypto', 'bond', 'etf'
 ) STRICT;
 
@@ -202,6 +202,20 @@ CREATE TABLE report_comments (
 	FOREIGN KEY(recorded_with) REFERENCES report(report_id)
 ) STRICT;
 
+
+CREATE TABLE investments (
+    symbol TEXT PRIMARY KEY,       -- 'USD', 'EUR', 'AAPL', 'BTC' (must be unique)
+    
+	name TEXT,
+	nyse_symbol TEXT,
+	ibkr_symbol TEXT,
+	identifier TEXT, -- e.g., CUSIP, ISIN, or other unique identifier
+	country TEXT, -- ISO 3166-1 alpha-2 country code
+	fund_type TEXT, -- e.g., 'mutual fund', 'ETF', 'index fund', 'REIT', 'other'
+	fund_focus TEXT, -- e.g., 'equity_heavy', 'mixed', 'other', 'german_real_estate', 'real_estate'
+	FOREIGN KEY(symbol) REFERENCES assets(symbol)
+) STRICT;
+
 ```
 
 high level types
@@ -246,7 +260,7 @@ class Report(Commentable):
 
 class Asset(Tagable):
 	symbol: str
-	long_name: Optional[str] = None
+	name: Optional[str] = None
 	category: Optional[str] = None
 
 class Account(Tagable):

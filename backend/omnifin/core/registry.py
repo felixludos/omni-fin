@@ -64,11 +64,29 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         identity_field="symbol",
         fields={
             "symbol": "symbol",
-            "long_name": "long_name",
+            "name": "name",
             "category": "category",
             "recorded": "report_id",
         },
         dependency_order=2,
+        required=("symbol",),
+        generated_pk=False,
+    ),
+    "Investment": ModelSpec(
+        table="investments",
+        pk="symbol",
+        identity_field="symbol",
+        fields={
+            "symbol": "symbol",
+            "name": "name",
+            "nyse_symbol": "nyse_symbol",
+            "ibkr_symbol": "ibkr_symbol",
+            "identifier": "identifier",
+            "country": "country",
+            "fund_type": "fund_type",
+            "fund_focus": "fund_focus",
+        },
+        dependency_order=3,
         required=("symbol",),
         generated_pk=False,
     ),
@@ -170,6 +188,7 @@ SQL_TO_MODEL_FIELDS: dict[str, dict[str, str]] = {
 
 COERCION_KEYS: dict[str, str] = {
     "Asset": "symbol",
+    "Investment": "symbol",
     "Tag": "name",
     "Account": "name",
     "Report": "name",
@@ -208,5 +227,6 @@ RELATION_SPECS: dict[str, dict[str, tuple[str, str, str, str]]] = {
 
 NATURAL_KEY_FIELDS: dict[str, ClassVar[tuple[str, ...]]] = {
     "Asset": ("symbol",),
+    "Investment": ("symbol",),
     "Tag": ("name",),
 }

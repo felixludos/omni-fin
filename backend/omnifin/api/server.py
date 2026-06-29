@@ -10,7 +10,7 @@ from fastapi import FastAPI, Query
 from fastapi.encoders import jsonable_encoder
 
 from omnifin.core.db import DatabaseSession
-from omnifin.models import Account, Asset, Report, Statement, Transfer
+from omnifin.models import Account, Asset, Investment, Report, Statement, Transfer
 
 DB_ENV = "OMNIFIN_DB"
 
@@ -54,6 +54,12 @@ def list_assets(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, g
 def list_accounts(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)) -> list[dict[str, Any]]:
     with DatabaseSession(db_path()) as session:
         return serialize(session.all(Account, limit=limit, offset=offset))
+
+
+@app.get("/api/investments")
+def list_investments(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)) -> list[dict[str, Any]]:
+    with DatabaseSession(db_path()) as session:
+        return serialize(session.all(Investment, limit=limit, offset=offset))
 
 
 @app.get("/api/statements")

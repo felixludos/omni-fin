@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from omnifin.api.server import app, DB_ENV
 from omnifin.core.db import DatabaseSession
-from omnifin.models import Account, Asset, Report, Statement, Transfer, clear_global_identity_map
+from omnifin.models import Account, Asset, Investment, Report, Statement, Transfer, clear_global_identity_map
 
 @pytest.fixture(autouse=True)
 def clear_identity_maps():
@@ -27,6 +27,16 @@ def setup_api_env(test_db_path, monkeypatch):
         report = Report(name="Test Report", _session=session)
         usd = Asset("USD", category="fiat", _session=session)
         eur = Asset("EUR", category="fiat", _session=session)
+        equity = Asset("VWCE", category="etf", _session=session)
+        investment = Investment(
+            _session=session,
+            symbol="VWCE",
+            name="Vanguard FTSE All-World UCITS ETF",
+            identifier="IE00BK5BQT80",
+            country="IE",
+            fund_type="ETF",
+            fund_focus="equity_heavy",
+        )
         account = Account(name="Test Account", type="internal", _session=session)
         statement = Statement(
             _session=session,
@@ -43,7 +53,7 @@ def setup_api_env(test_db_path, monkeypatch):
             unit=eur,
             amount=10.0,
         )
-        report.save(usd, eur, account, statement, transfer)
+        report.save(usd, eur, equity, investment, account, statement, transfer)
     
     yield
 
@@ -63,7 +73,7 @@ def test_list_assets(client):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert {asset["symbol"] for asset in data} == {"USD", "EUR"}
+    assert {asset["symbol"] for asset in data} == {"USD", "EUR", "VWCE"}
 
 def test_list_accounts(client):
     response = client.get("/api/accounts")
@@ -72,6 +82,16 @@ def test_list_accounts(client):
     assert isinstance(data, list)
     assert len(data) == 1
     assert data[0]["name"] == "Test Account"
+
+
+def test_list_investments(client):
+    response = client.get("/api/investments")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0]["symbol"] == "VWCE"
+    assert data[0]["country"] == "IE"
 
 
 def test_list_statements(client):
