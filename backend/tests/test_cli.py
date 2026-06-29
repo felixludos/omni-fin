@@ -92,6 +92,8 @@ def test_cli_tax_us(runner, temp_db):
     payload = json.loads(result.output)
     assert payload["jurisdiction"] == "US"
     assert payload["tax_year"] == 2026
+    assert "sales_processed" in payload
+    assert "transfers_processed" in payload
     assert payload["warnings"]
 
 def test_cli_tax_de(runner, temp_db):
@@ -100,6 +102,8 @@ def test_cli_tax_de(runner, temp_db):
     payload = json.loads(result.output)
     assert payload["jurisdiction"] == "DE"
     assert payload["tax_year"] == 2026
+    assert "sales_processed" in payload
+    assert "transfers_processed" in payload
     assert payload["warnings"]
 
 def test_cli_serve_command_invokes_uvicorn(runner, temp_db, monkeypatch):

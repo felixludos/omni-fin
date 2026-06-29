@@ -222,6 +222,7 @@ class DomainModel(BaseModel, metaclass=IdentityMapMeta):
             "sender": "Account",
             "receiver": "Account",
             "unit": "Asset",
+            "acquisition": "Transfer",
             "location": "Location",
         }.get(field_name)
         if relation_model is None:
@@ -722,23 +723,29 @@ class Report(Commentable):
         return summary
 
 
-from omnifin.models.categories import AssetType, Country, FundType, FundEquityRatioType
+from omnifin.models.categories import AssetType, Country, EntityType, EventType, FundType, FundEquityRatioType, SaleTerm
 
 
 class Asset(Tagable):
-    symbol: str
-    name: Optional[str] = None
-    category: Optional[AssetType] = None
-    recorded: Optional[Report] = None
+    symbol: str = Field(description="Canonical asset symbol used as primary key (e.g., USD, AAPL, VWCE).")
+    name: Optional[str] = Field(default=None, description="Optional human-readable asset name.")
+    category: Optional[AssetType | str] = Field(
+        default=None,
+        description="Normalized asset category. Prefer AssetType enum values; keep source strings only if not yet mapped.",
+    )
+    recorded: Optional[Report] = Field(default=None, description="Report that introduced or updated this asset.")
 
 
 class Investment(Asset):
-    nyse_symbol: Optional[str] = None
-    ibkr_symbol: Optional[str] = None
-    identifier: Optional[str] = None
-    country: Optional[Country] = None
-    fund_type: Optional[FundType] = None
-    fund_focus: Optional[FundEquityRatioType] = None
+    nyse_symbol: Optional[str] = Field(default=None, description="NYSE ticker alias if available.")
+    ibkr_symbol: Optional[str] = Field(default=None, description="Interactive Brokers symbol if it differs from canonical symbol.")
+    identifier: Optional[str] = Field(default=None, description="ISIN, CUSIP, WKN, or other stable instrument identifier.")
+    country: Optional[Country | str] = Field(default=None, description="Primary domicile country code for the instrument.")
+    fund_type: Optional[FundType | str] = Field(default=None, description="Fund structure classification used for reporting/tax logic.")
+    fund_focus: Optional[FundEquityRatioType | str] = Field(
+        default=None,
+        description="Fund equity/real-estate exposure bucket for jurisdiction-specific tax treatment.",
+    )
 
 
 class Account(Tagable, Commentable):
@@ -813,8 +820,40 @@ class Location(DomainModel):
 
 class Event(DomainModel):
     id: UUID = Field(default_factory=uuid7)
-    name: Optional[str] = None
-    type: Optional[str] = None
+    name: Optional[str] = Field(default=None, description="Human-readable event label such as 'sell', 'dividend', or 'wire transfer'.")
+    type: Optional[EventType | str] = Field(
+        default=None,
+        description="Canonical event category. Prefer EventType values and use free-form strings only when source data is more granular.",
+    )
+
+    def sale(self) -> Optional["InvestmentSale"]:
+        """Return sale metadata linked to this event by shared identifier, if available."""
+
+        if self._session is None:
+            return None
+        return self._session.get(InvestmentSale, self.id)
+
+
+class InvestmentSale(DomainModel):
+    id: UUID = Field(
+        default_factory=uuid7,
+        description="Sale identifier. Prefer sharing the same UUID as the corresponding Event.id for one-to-one linking.",
+    )
+    acquisition_date: datetime = Field(
+        description="Acquisition date of the disposed lot. Must be timezone-aware and in ISO-8601 format when serialized.",
+    )
+    acquisition: Optional[Transfer] = Field(
+        default=None,
+        description="Optional transfer that originally acquired the lot being sold.",
+    )
+    cost_basis: float = Field(
+        ge=0,
+        description="Tax basis amount allocated to this disposal lot in the same monetary unit as proceeds.",
+    )
+    term: SaleTerm | str = Field(
+        default=SaleTerm.UNKNOWN,
+        description="Holding-period classification used by jurisdiction-specific tax rules.",
+    )
 
 
 class Entity(DomainModel):
@@ -838,7 +877,7 @@ class Comment(DomainModel):
 
 
 # Resolve forward references for Pydantic.
-for _model in [Report, Asset, Investment, Account, Statement, Transfer, Location, Event, Entity, Tag, Comment]:
+for _model in [Report, Asset, Investment, Account, Statement, Transfer, Location, Event, InvestmentSale, Entity, Tag, Comment]:
     _model.model_rebuild()
 
 

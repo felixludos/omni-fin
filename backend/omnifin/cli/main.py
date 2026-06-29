@@ -91,16 +91,17 @@ def normalize_command(
 def tax_command(db_path: str, jurisdiction: str, tax_year: int) -> None:
     """Run the scaffold tax calculator for a jurisdiction/year."""
 
-    from omnifin.models import Transfer
+    from omnifin.models import InvestmentSale, Transfer
     from omnifin.tax.de import calculate_german_tax
     from omnifin.tax.us import calculate_us_tax
 
     with DatabaseSession(db_path) as session:
         transfers = session.all(Transfer, limit=100000)
+        sales = session.all(InvestmentSale, limit=100000)
         if jurisdiction == "US":
-            result = calculate_us_tax(transfers, tax_year=tax_year)
+            result = calculate_us_tax(transfers, sales=sales, tax_year=tax_year)
         else:
-            result = calculate_german_tax(transfers, tax_year=tax_year)
+            result = calculate_german_tax(transfers, sales=sales, tax_year=tax_year)
     click.echo(result.model_dump_json(indent=2))
 
 

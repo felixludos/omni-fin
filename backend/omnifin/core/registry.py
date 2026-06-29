@@ -141,6 +141,20 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         dependency_order=3,
         required=("type",),
     ),
+    "InvestmentSale": ModelSpec(
+        table="investment_sales",
+        pk="sale_id",
+        identity_field="id",
+        fields={
+            "id": "sale_id",
+            "acquisition_date": "acquisition_date",
+            "acquisition": "acquisition_transfer_id",
+            "cost_basis": "cost_basis",
+            "term": "term",
+        },
+        dependency_order=5,
+        required=("acquisition_date", "cost_basis", "term"),
+    ),
     "Statement": ModelSpec(
         table="statements",
         pk="statement_id",

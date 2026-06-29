@@ -4,6 +4,7 @@ from omnifin.models.domain import (
     Comment,
     Entity,
     Event,
+    InvestmentSale,
     Investment,
     Location,
     PlanRecord,
@@ -15,6 +16,7 @@ from omnifin.models.domain import (
     Transfer,
     clear_global_identity_map,
 )
+from omnifin.models.composites import Portfolio, Sale, Trade
 
 __all__ = [
     "Account",
@@ -22,6 +24,7 @@ __all__ = [
     "Comment",
     "Entity",
     "Event",
+    "InvestmentSale",
     "Investment",
     "Location",
     "PlanRecord",
@@ -31,5 +34,8 @@ __all__ = [
     "Statement",
     "Tag",
     "Transfer",
+    "Portfolio",
+    "Trade",
+    "Sale",
     "clear_global_identity_map",
 ]

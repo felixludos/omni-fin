@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from omnifin.api.server import app, DB_ENV
 from omnifin.core.db import DatabaseSession
-from omnifin.models import Account, Asset, Investment, Report, Statement, Transfer, clear_global_identity_map
+from omnifin.models import Account, Asset, Event, Investment, InvestmentSale, Report, Statement, Transfer, clear_global_identity_map
 
 @pytest.fixture(autouse=True)
 def clear_identity_maps():
@@ -53,7 +53,16 @@ def setup_api_env(test_db_path, monkeypatch):
             unit=eur,
             amount=10.0,
         )
-        report.save(usd, eur, equity, investment, account, statement, transfer)
+        event = Event(_session=session, name="Test sale event", type="trade")
+        transfer.add_involved(event)
+        sale = InvestmentSale(
+            _session=session,
+            id=event.id,
+            acquisition_date=datetime(2025, 1, 1, tzinfo=UTC),
+            cost_basis=8.0,
+            term="long",
+        )
+        report.save(usd, eur, equity, investment, account, statement, transfer, event, sale)
     
     yield
 
@@ -118,6 +127,15 @@ def test_list_reports(client):
     assert isinstance(data, list)
     assert len(data) == 1
     assert data[0]["name"] == "Test Report"
+
+
+def test_list_investment_sales(client):
+    response = client.get("/api/investment-sales")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0]["term"] == "long"
 
 def test_api_pagination_params(client):
     response = client.get("/api/assets?limit=1&offset=1")

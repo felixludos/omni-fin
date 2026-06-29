@@ -20,11 +20,13 @@ class RowType(str, Enum):
 
 
 class EventType(str, Enum):
+	"""Canonical high-level event categories used by ingestion and AI-assisted labeling."""
+
 	MULTI_TRANSFER = "multi_transfer"
 	"""A multi-transfer event represents a series of transfers that should be considered jointly."""
 
 	TRADE = "trade"
-	"""A trade involves several transfers that are """
+	"""A trade event represents the purchase or sale of an investment instrument."""
 
 	TRANSFER = "transfer"
 	"""A transfer event represents the movement of funds or assets between accounts. It includes details about the transfer, such as the source account, destination account, amount transferred, and any associated fees or costs."""
@@ -39,9 +41,31 @@ class EventType(str, Enum):
 	"""An other event represents any event that does not fit into the predefined categories. It includes details about the event, such as a description, date, and any associated costs or revenues."""
 
 
+class SaleTerm(str, Enum):
+	"""Holding-period classification used for investment sales and tax computations."""
+
+	SHORT = "short"
+	"""Asset held for a short-term period under local tax rules."""
+
+	LONG = "long"
+	"""Asset held for a long-term period under local tax rules."""
+
+	OTHER = "other"
+	"""A known classification that is not strictly short or long in this schema."""
+
+	UNKNOWN = "unknown"
+	"""Insufficient information to determine holding period term."""
+
+
 class AssetType(str, Enum):
-	CURRENCY = "currency"
+	FIAT = "fiat"
 	"""Fiat currencies such as USD, EUR, GBP, JPY, etc."""
+
+	CURRENCY = "currency"
+	"""Alias category for currency-like values where the source already uses this token."""
+
+	EQUITY = "equity"
+	"""Broad equity category used by broker exports and normalized DB rows."""
 
 	STOCK = "stock"
 	"""Direct shares in individual corporations (e.g., Apple, Microsoft, Amazon)."""
@@ -52,8 +76,23 @@ class AssetType(str, Enum):
 	CRYPTO = "crypto"
 	"""Cryptocurrencies such as Bitcoin, Ethereum, and other digital assets."""
 
+	ETF = "etf"
+	"""Exchange-traded funds."""
+
+	MUTUAL_FUND = "mutual_fund"
+	"""Mutual funds."""
+
 	FUND = "fund"
 	"""Investment funds, including mutual funds, ETFs, and index funds."""
+
+	CASH_EQUIVALENT = "cash_equivalent"
+	"""Cash-like instruments, sweep balances, and money-market positions."""
+
+	COMMODITY = "commodity"
+	"""Commodity exposure instruments."""
+
+	DERIVATIVE = "derivative"
+	"""Derivative instruments such as options or futures."""
 	
 	OTHER = "other"
 	"""Other asset categories that don't fit into the above classifications."""

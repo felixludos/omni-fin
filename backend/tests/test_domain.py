@@ -6,7 +6,17 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from omnifin.core.db import DatabaseSession
-from omnifin.models import Asset, Account, Investment, Report, Transfer, clear_global_identity_map
+from omnifin.models import (
+    Account,
+    Asset,
+    Event,
+    Investment,
+    InvestmentSale,
+    Report,
+    Sale,
+    Transfer,
+    clear_global_identity_map,
+)
 from omnifin.core.registry import MODEL_SPECS
 from omnifin.core.errors import LedgerIntegrityError
 
@@ -178,3 +188,66 @@ def test_tag_and_comment_persistence(temp_db):
         assert any(t.name == "tax" for t in acc_saved.tags())
         assert len(acc_saved.comments()) == 1
         assert acc_saved.comments()[0].content == "This is a test comment"
+
+
+def test_investment_sale_persistence_and_event_link(temp_db):
+    with DatabaseSession(temp_db) as session:
+        report = Report(_session=session, name="Sale Integration Report")
+        usd = Asset(_session=session, symbol="USD", category="fiat")
+        vwce = Asset(_session=session, symbol="VWCE", category="etf")
+        account = Account(_session=session, name="Brokerage")
+        buy = Transfer(
+            _session=session,
+            sender=account,
+            receiver=account,
+            unit=vwce,
+            amount=5.0,
+            date=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+        sell_out = Transfer(
+            _session=session,
+            sender=account,
+            receiver=account,
+            unit=vwce,
+            amount=5.0,
+            date=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        proceeds = Transfer(
+            _session=session,
+            sender=account,
+            receiver=account,
+            unit=usd,
+            amount=620.0,
+            date=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        event = Event(_session=session, name="VWCE sale", type="trade")
+        sell_out.add_involved(event)
+        proceeds.add_involved(event)
+
+        sale = InvestmentSale(
+            _session=session,
+            id=event.id,
+            acquisition=buy,
+            acquisition_date=datetime(2025, 1, 1, tzinfo=UTC),
+            cost_basis=500.0,
+            term="long",
+        )
+
+        report.save(usd, vwce, account, buy, sell_out, proceeds, event, sale)
+
+    with DatabaseSession(temp_db) as session2:
+        saved_event = session2.get(Event, event.id)
+        assert saved_event is not None
+        linked_sale = saved_event.sale()
+        assert linked_sale is not None
+        assert linked_sale.cost_basis == 500.0
+        assert linked_sale.term == "long"
+
+
+def test_sale_model_schema_has_descriptive_context():
+    schema = Sale.model_json_schema()
+    assert schema.get("description")
+    properties = schema["properties"]
+    assert "basis" in properties["cost_basis"]["description"].lower()
+    assert "acquir" in properties["acquisition"]["description"].lower()
+    assert "example" in schema
