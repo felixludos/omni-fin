@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 .idea/
-db/
+# db/
 extra/
 novo-data/
 fin-tx.db
