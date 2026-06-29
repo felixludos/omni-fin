@@ -722,10 +722,13 @@ class Report(Commentable):
         return summary
 
 
+from omnifin.models.categories import AssetType, Country, FundType, FundEquityRatioType
+
+
 class Asset(Tagable):
     symbol: str
     name: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[AssetType] = None
     recorded: Optional[Report] = None
 
 
@@ -733,9 +736,9 @@ class Investment(Asset):
     nyse_symbol: Optional[str] = None
     ibkr_symbol: Optional[str] = None
     identifier: Optional[str] = None
-    country: Optional[str] = None
-    fund_type: Optional[str] = None
-    fund_focus: Optional[str] = None
+    country: Optional[Country] = None
+    fund_type: Optional[FundType] = None
+    fund_focus: Optional[FundEquityRatioType] = None
 
 
 class Account(Tagable, Commentable):
@@ -805,7 +808,7 @@ class Location(DomainModel):
     id: UUID = Field(default_factory=uuid7)
     city: Optional[str] = None
     state: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[Country | str] = None
 
 
 class Event(DomainModel):
@@ -817,13 +820,13 @@ class Event(DomainModel):
 class Entity(DomainModel):
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = None
-    legal_type: Optional[str] = None
+    legal_type: Optional[EntityType | str] = None
 
 
 class Tag(DomainModel):
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[Country | str] = None
     recorded: Optional[Report] = None
 
 
