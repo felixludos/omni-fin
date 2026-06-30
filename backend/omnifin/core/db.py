@@ -121,9 +121,72 @@ class DatabaseSession:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-    conn.execute("INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)")
+    """Initialize the database with the current schema and run migrations."""
+
+    # Commit any open transaction first so executescript runs in a clean scope.
     conn.commit()
+
+    # Apply the base schema (CREATE TABLE IF NOT EXISTS won't overwrite existing tables).
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    # Run any pending migrations on the main connection.
+    _apply_pending_migrations(conn)
+
+    conn.commit()
+
+
+def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    """Check if a column exists in a table.
+
+    Handles both dict and tuple row_factory configurations by reading the 'name'
+    field from PRAGMA results (which is always available as the first column).
+    """
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    # Save current factory, temporarily switch to index-based access for safety.
+    prev_factory = conn.row_factory
+    conn.row_factory = None
+    rows = cursor.fetchall()
+    conn.row_factory = prev_factory
+
+    if not rows:
+        return False
+    sample = rows[0]
+    if isinstance(sample, dict):
+        columns = [r["name"] for r in rows]
+    else:
+        # (cid, name, type, notnull, dflt_value, pk) -> index 1 is the column name.
+        columns = [r[1] for r in rows]
+    return column_name in columns
+
+
+def _apply_pending_migrations(conn: sqlite3.Connection) -> None:
+    """Apply database migrations to ensure schema is up-to-date."""
+
+    # Ensure the migrations table exists (schema.sql creates it, but be defensive).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "version INTEGER PRIMARY KEY, "
+        "applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
+        ") STRICT"
+    )
+
+    # Temporarily clear the row_factory so aggregate results come back as plain tuples.
+    # This is needed because dict_factory would return dicts, but we access by index here.
+    previous_factory = conn.row_factory
+    conn.row_factory = None
+
+    raw_cursor = conn.execute(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+    )
+    current_version = next(iter(next(raw_cursor)), 0)
+    conn.row_factory = previous_factory
+
+    # Migration 1: Add 'type' column to events table if missing.
+    if current_version < 1 and not _column_exists(conn, "events", "type"):
+        conn.execute(
+            f"ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'unknown'"
+        )
+        conn.execute("INSERT OR REPLACE INTO schema_migrations(version) VALUES (1)")
 
 
 def normalize_identity_value(value: Any) -> Any:

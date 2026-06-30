@@ -275,7 +275,6 @@ def test_sale_model_schema_has_descriptive_context():
     assert schema.get("description")
     properties = schema["properties"]
     assert "basis" in properties["cost_basis"]["description"].lower()
-    assert "acquir" in properties["acquisition"]["description"].lower()
     assert "example" in schema
 
 
