@@ -10,6 +10,15 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true
       }
+    },
+    watch: {
+      ignored: [
+        '**/backend/**',     // Adjust this to match your FastAPI folder name if different
+        '**/*.py',
+        '**/__pycache__/**',
+        '**/*.db',
+        '**/.venv/**'
+      ]
     }
   }
 })
