@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE TABLE IF NOT EXISTS accounts (
     account_id BLOB PRIMARY KEY CHECK(length(account_id) = 16),
     name TEXT NOT NULL,
-    type TEXT CHECK(type IS NULL OR type IN ('internal', 'external', 'merchant', 'brokerage', 'bank', 'tax_authority')),
+    type TEXT,
     report_id BLOB CHECK(report_id IS NULL OR length(report_id) = 16),
     FOREIGN KEY(report_id) REFERENCES reports(report_id)
 ) STRICT;

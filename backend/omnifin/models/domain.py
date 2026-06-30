@@ -728,8 +728,8 @@ from omnifin.models.categories import AssetTagOptions, AssetType, Country, Entit
 
 
 INVESTMENT_COMMENT_TYPES: dict[str, str] = {
-    "nyse_symbol": "nyse_ticker",
-    "ibkr_symbol": "ibkr_symbol",
+    "nyse_ticker": "nyse_ticker",
+    "ibkr_ticker": "ibkr_ticker",
     "identifier": "identifier",
     "country": "country",
     "fund_type": "fund_type",
@@ -791,8 +791,8 @@ class Asset(Tagable, Commentable):
 
 class Investment(Asset):
     """A financial instrument that is a security or fund, typically subject to tax reporting."""
-    nyse_symbol: Optional[str] = Field(default=None, description="NYSE ticker alias if available.")
-    ibkr_symbol: Optional[str] = Field(default=None, description="Interactive Brokers symbol if it differs from canonical symbol.")
+    nyse_ticker: Optional[str] = Field(default=None, description="NYSE ticker alias if available.")
+    ibkr_ticker: Optional[str] = Field(default=None, description="Interactive Brokers ticker if it differs from canonical symbol.")
     identifier: Optional[str] = Field(default=None, description="ISIN, CUSIP, WKN, or other stable instrument identifier.")
     country: Optional[Country | str] = Field(default=None, description="Primary domicile country code for the instrument.")
     fund_type: Optional[FundType | str] = Field(default=None, description="Fund structure classification used for reporting/tax logic.")

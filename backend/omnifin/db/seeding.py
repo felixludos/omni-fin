@@ -12,7 +12,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from omnifin.models import Account, Asset, Tag
+from omnifin.models import Account, Asset, Tag, Investment
 
 
 SEED_DATA_DIR = Path(__file__).resolve().parents[3] / "cloud_data" / "seed_data"
@@ -30,7 +30,8 @@ class SeedDataLoader:
         tags_data = data.get("tags", [])
         tags: list[Tag] = []
         for item in tags_data:
-            tag = Tag(name=item["name"], category=item.get("category"))
+            tag = Tag(name=item["name"], 
+                      category=item.get("category"))
             tags.append(tag)
         return tags
 
@@ -40,8 +41,12 @@ class SeedDataLoader:
         accounts_data = data.get("accounts", [])
         accounts: list[Account] = []
         for item in accounts_data:
-            account = Account(name=item["name"], type=item.get("type"))
+            account = Account(name=item["name"],
+                              type=item.get("type"),
+                              institution=item.get("institution"))
             accounts.append(account)
+            for tag in item.get("tags", []):
+                account.add_tag(Tag(name=tag))
         return accounts
 
     def load_assets(self) -> list[Asset]:
@@ -50,8 +55,26 @@ class SeedDataLoader:
         assets_data = data.get("assets", [])
         assets: list[Asset] = []
         for item in assets_data:
-            asset = Asset(symbol=item["symbol"], name=item.get("name"), category=item.get("category"))
+            asset = Asset(symbol=item["symbol"], 
+                          name=item.get("name"), 
+                          category=item.get("category"))
             assets.append(asset)
+            for tag in item.get("tags", []):
+                asset.add_tag(Tag(name=tag))
+        investment_data = data.get("investments", [])
+        for item in investment_data:
+            investment = Investment(symbol=item["symbol"], 
+                                    name=item.get("name"), 
+                                    category=item.get("category"), 
+                                    identifier=item.get("identifier"),
+                                    nyse_ticker=item.get("nyse_ticker"), 
+                                    ibkr_ticker=item.get("ibkr_ticker"),
+                                    country=item.get("country"), 
+                                    fund_type=item.get("fund_type"), 
+                                    fund_focus=item.get("fund_focus"))
+            assets.append(investment)
+            for tag in item.get("tags", []):
+                investment.add_tag(Tag(name=tag))
         return assets
 
     def _load_yaml(self, filename: str) -> dict[str, Any]:
