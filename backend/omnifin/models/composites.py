@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnifin.models.categories import EventType, SaleTerm
-from omnifin.models.domain import Asset, Investment, Statement, Transfer
+from omnifin.models.domain import Asset, Investment, Statement, Transfer, Account
 
 
 class Portfolio(BaseModel):
@@ -113,10 +113,6 @@ class Sale(Trade):
 		default=None,
 		description='Optional fee transfer charged for execution or settlement of the sale.',
 	)
-	acquisition: Optional[Transfer] = Field(
-		default=None,
-		description='Transfer that originally acquired the sold lot. Use when historical source transaction is known.',
-	)
 	acquisition_date: Optional[datetime] = Field(
 		default=None,
 		description='Acquisition date of the sold lot. Required when precise holding-period classification is expected.',
@@ -140,9 +136,15 @@ class Sale(Trade):
 		return self
 
 
+############### Schemas for AI parsing results ###############
 
-class ParsingResult(BaseModel):
-	summary: str
-	confidence: float = Field(..., ge=0.0, le=1.0)
-	objects: list[Transfer | Trade | Sale | Asset | Investment]
 
+class ParsingProduct(BaseModel):
+	rationale: str = Field(..., description="1 line rationale for the product.")
+	product: Asset | Account | Transfer | Statement | Investment | Trade | Sale = Field(..., description="The product that should be created from the input data.") 
+
+
+class ParsingRowResult(BaseModel):
+	summary: str = Field(..., description="1 line summary of the row's contents.")
+	confidence: Literal['low', 'medium', 'high'] = Field(..., description="Confidence score for the row's interpretation.")
+	products: list[ParsingProduct] = Field(..., description="List of products derived from the row.")

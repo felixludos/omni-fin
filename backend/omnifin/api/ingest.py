@@ -380,6 +380,7 @@ async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> tuple[RowInt
     )
 
     model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "gemma4:31b")
+    model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "ornith:35b")
     base_url = os.environ.get("OMNIFIN_OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
     try:
