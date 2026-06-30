@@ -149,6 +149,9 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Run any pending migrations on the main connection.
     _apply_pending_migrations(conn)
 
+    # Auto-seed basic objects (tags, accounts, assets) if the database is fresh.
+    _seed_if_empty(conn)
+
     conn.commit()
 
 
@@ -204,6 +207,16 @@ def _apply_pending_migrations(conn: sqlite3.Connection) -> None:
             f"ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'unknown'"
         )
         conn.execute("INSERT OR REPLACE INTO schema_migrations(version) VALUES (1)")
+
+
+def _seed_if_empty(conn: sqlite3.Connection) -> None:
+    """Auto-seed tags, accounts, and assets if their tables are empty.
+
+    Called after migrations during ``init_db()`` so that a freshly initialized
+    database is immediately usable without manual setup steps.
+    """
+    from omnifin.db.seeding import _seed_if_empty as do_seed  # avoid circular imports at module level
+    do_seed(conn)
 
 
 def normalize_identity_value(value: Any) -> Any:

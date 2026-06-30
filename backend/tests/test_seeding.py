@@ -454,6 +454,69 @@ class TestEdgeCases:
 # ── CLI integration test (optional, slow but valuable) ────────────────────────
 
 
+# ── Auto-seed verification tests (DatabaseSession.initialize=True) ─────────────
+
+
+class TestAutoSeedOnInit:
+    """Verify that DatabaseSession(initialize=True) automatically seeds the DB."""
+
+    def test_fresh_db_has_seed_tags(self, tmp_path):
+        """A freshly initialized DB should have seed tag rows without manual seeding."""
+        db_path = str(tmp_path / "auto.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass  # session closed
+
+        from omnifin.db.seeding import SeedDataLoader
+
+        loader = SeedDataLoader("")
+        tags = loader.load_tags()
+        with DatabaseSession(db_path, initialize=False) as s2:
+            count = len(s2.execute("SELECT * FROM tags").fetchall())
+            assert count == len(tags), f"expected {len(tags)} rows, got {count}"
+
+    def test_fresh_db_has_seed_accounts(self, tmp_path):
+        db_path = str(tmp_path / "auto_acct.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        from omnifin.db.seeding import SeedDataLoader
+        loader = SeedDataLoader("")
+        accounts = loader.load_accounts()
+        with DatabaseSession(db_path, initialize=False) as s2:
+            count = len(s2.execute("SELECT * FROM accounts").fetchall())
+            assert count == len(accounts), f"expected {len(accounts)} rows, got {count}"
+
+    def test_fresh_db_has_seed_assets(self, tmp_path):
+        db_path = str(tmp_path / "auto_asset.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        from omnifin.db.seeding import SeedDataLoader
+        loader = SeedDataLoader("")
+        assets = loader.load_assets()
+        with DatabaseSession(db_path, initialize=False) as s2:
+            count = len(s2.execute("SELECT * FROM assets").fetchall())
+            assert count == len(assets), f"expected {len(assets)} rows, got {count}"
+
+    def test_double_init_no_duplicates(self, tmp_path):
+        """Initializing twice must not create duplicate seed rows."""
+        db_path = str(tmp_path / "double.db")
+        with DatabaseSession(db_path, initialize=True) as s1:
+            pass  # first init seeds the DB
+
+        from omnifin.db.seeding import SeedDataLoader
+        loader = SeedDataLoader("")
+        tags = loader.load_tags()
+
+        # Re-initialize (simulate restart or new session) — should be no-op since tables are populated.
+        with DatabaseSession(db_path, initialize=True) as s2:
+            pass  # second init; _seed_if_empty should skip
+
+        with DatabaseSession(db_path, initialize=False) as s3:
+            count = len(s3.execute("SELECT * FROM tags").fetchall())
+            assert count == len(tags), f"duplicate seed rows created: expected {len(tags)}, got {count}"
+
+
 class TestCLIIntegration:
     """Test that the seed_database function works end-to-end."""
 

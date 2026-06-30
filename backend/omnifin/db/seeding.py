@@ -6,6 +6,7 @@ database using the domain model layer (``Tag``, ``Account``, ``Asset``).
 
 from __future__ import annotations
 
+import sqlite3
 import yaml
 from pathlib import Path
 from typing import Any
@@ -62,6 +63,67 @@ class SeedDataLoader:
             return yaml.safe_load(f) or {}
 
 
+def _tables_are_empty(conn: sqlite3.Connection) -> bool:
+    """Return True if all three seed tables (tags, accounts, assets) are empty.
+
+    Handles both ``dict_factory`` and default tuple row_factory by extracting
+    the first value from each fetched row safely.
+    """
+    for table in ("tags", "accounts", "assets"):
+        cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
+        row = cursor.fetchone()
+        if row is None:
+            continue
+        # Extract the count value regardless of row_factory type.
+        if isinstance(row, dict):
+            # dict_factory returns a dict like {"COUNT(*)": 0}
+            count_val = next(iter(row.values()), 0)
+        else:
+            # tuple access: (0,) for COUNT(*)
+            count_val = int(row[0])
+        if count_val > 0:
+            return False
+    return True
+
+
+def _seed_if_empty(conn: sqlite3.Connection) -> None:
+    """Seed the database from YAML files IF all seed tables are currently empty.
+
+    This is a no-op when called on an already-populated database, making it safe
+    to call on every ``init_db()`` invocation. It takes an open ``sqlite3.Connection``
+    so it can participate in the same transaction as schema initialization.
+    """
+    if not _tables_are_empty(conn):
+        return  # data already present — skip
+
+    loader = SeedDataLoader("")  # path only used for file resolution; SEED_DATA_DIR is absolute
+    cursor = conn.cursor()
+
+    # --- tags -------------------------------------------------------------------
+    for tag in loader.load_tags():
+        tag_id_bytes = _deterministic_uuid_bytes(f"tag:{tag.name}")
+        cursor.execute(
+            "INSERT OR IGNORE INTO tags (tag_id, name, category) VALUES (?, ?, ?)",
+            (tag_id_bytes, tag.name, tag.category),
+        )
+
+    # --- accounts ---------------------------------------------------------------
+    for account in loader.load_accounts():
+        acc_id_bytes = _deterministic_uuid_bytes(f"acc:{account.name}")
+        cursor.execute(
+            "INSERT OR IGNORE INTO accounts (account_id, name, type) VALUES (?, ?, ?)",
+            (acc_id_bytes, account.name, account.type),
+        )
+
+    # --- assets -----------------------------------------------------------------
+    for asset in loader.load_assets():
+        category_str = asset.category.value if hasattr(asset.category, 'value') else str(asset.category) if asset.category else None
+        cursor.execute(
+            "INSERT OR IGNORE INTO assets (symbol, name, category) VALUES (?, ?, ?)",
+            (asset.symbol, asset.name, category_str),
+        )
+
+
 def seed_database(db_path: str | Path = "omnifin.db") -> None:
     """Seed the database with default objects from YAML files.
 
@@ -102,6 +164,12 @@ def seed_database(db_path: str | Path = "omnifin.db") -> None:
             )
 
         session.conn.commit()  # type: ignore[union-attr]
+
+
+def _deterministic_uuid_bytes(value: str) -> bytes:
+    """Return deterministic UUID-like bytes derived from a content string."""
+    import hashlib
+    return hashlib.sha256(value.encode("utf-8")).digest()[:16]
 
 
 if __name__ == "__main__":
