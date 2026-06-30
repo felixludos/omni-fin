@@ -149,9 +149,6 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Run any pending migrations on the main connection.
     _apply_pending_migrations(conn)
 
-    # Auto-seed basic objects (tags, accounts, assets) if the database is fresh.
-    _seed_if_empty(conn)
-
     conn.commit()
 
 

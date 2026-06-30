@@ -6,6 +6,7 @@ database using the domain model layer (``Tag``, ``Account``, ``Asset``).
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 import yaml
 from pathlib import Path
@@ -149,51 +150,87 @@ def _seed_if_empty(conn: sqlite3.Connection) -> None:
         )
 
 
-def seed_database(db_path: str | Path = "omnifin.db") -> None:
+def _is_connection(obj: object) -> bool:
+    """Duck-typing check for a sqlite3.Connection."""
+    if not hasattr(obj, "execute"):
+        return False
+    # Verify it's actually a Connection by checking its type name.
+    cls_name = type(obj).__name__
+    return cls_name == "Connection"
+
+
+def seed_database(db_path: str | Path | sqlite3.Connection = "omnifin.db") -> None:
     """Seed the database with default objects from YAML files.
 
     This function loads tags, accounts, and assets from their respective YAML
     files in ``cloud_data/seed_data/`` and inserts them into the database.
     It uses upsert logic to avoid duplicating existing entries and links all
     seeded objects to a dedicated "System Seed" report for provenance tracking.
+
+    Args:
+        db_path: Either a path-like object (str | Path) or an open sqlite3.Connection.
+                 When a connection is passed, it will be used directly without creating
+                 a new DatabaseSession. When a path is passed, the database at that path
+                 is initialized and seeded.
     """
-    import sqlite3
+    if _is_connection(db_path):  # type: ignore[arg-type]
+        seed_database_with_conn(db_path)  # type: ignore[arg-type]
+        return
+
     from omnifin.core.db import DatabaseSession
+    session = DatabaseSession(db_path, initialize=True)
+    with session:
+        seed_database_with_conn(session.conn)  # type: ignore[arg-type]
 
-    loader = SeedDataLoader(db_path)
 
-    with DatabaseSession(db_path, initialize=True) as session:
-        # Create seed report if not already present (idempotent).
-        seed_report_id = _create_seed_report(session.conn)  # type: ignore[arg-type]
+def _tag_bytes(tag: Tag) -> bytes:
+    """Return deterministic UUID-like bytes for a tag."""
+    return hashlib.sha256(f"tag:{tag.name}".encode()).digest()[:16]
 
-        cursor = session.conn.cursor()  # type: ignore[union-attr]
 
-        # Load and insert tags
-        tags = loader.load_tags()
-        for tag in tags:
-            cursor.execute(
-                "INSERT OR IGNORE INTO tags (tag_id, name, category, report_id) VALUES (?, ?, ?, ?)",
-                (str(tag.id), tag.name, tag.category, seed_report_id),
-            )
+def _account_bytes(account: Account) -> bytes:
+    """Return deterministic UUID-like bytes for an account."""
+    return hashlib.sha256(f"acc:{account.name}".encode()).digest()[:16]
 
-        # Load and insert accounts
-        accounts = loader.load_accounts()
-        for account in accounts:
-            cursor.execute(
-                "INSERT OR IGNORE INTO accounts (account_id, name, type, report_id) VALUES (?, ?, ?, ?)",
-                (str(account.id), account.name, account.type, seed_report_id),
-            )
 
-        # Load and insert assets
-        assets = loader.load_assets()
-        for asset in assets:
-            category_str = asset.category.value if hasattr(asset.category, 'value') else str(asset.category) if asset.category else None
-            cursor.execute(
-                "INSERT OR IGNORE INTO assets (symbol, name, category, report_id) VALUES (?, ?, ?, ?)",
-                (asset.symbol, asset.name, category_str, seed_report_id),
-            )
+def seed_database_with_conn(conn: sqlite3.Connection) -> None:
+    """Internal helper that seeds using an open connection.
 
-        session.conn.commit()  # type: ignore[union-attr]
+    Called by ``seed_database`` after resolving the appropriate connection source.
+    """
+    loader = SeedDataLoader("")
+
+    # Create seed report if not already present (idempotent).
+    seed_report_id = _create_seed_report(conn)
+
+    cursor = conn.cursor()
+
+    # Load and insert tags
+    tags = loader.load_tags()
+    for tag in tags:
+        cursor.execute(
+            "INSERT OR IGNORE INTO tags (tag_id, name, category, report_id) VALUES (?, ?, ?, ?)",
+            (_tag_bytes(tag), tag.name, tag.category, seed_report_id),
+        )
+
+    # Load and insert accounts
+    accounts = loader.load_accounts()
+    for account in accounts:
+        cursor.execute(
+            "INSERT OR IGNORE INTO accounts (account_id, name, type, report_id) VALUES (?, ?, ?, ?)",
+            (_account_bytes(account), account.name, account.type, seed_report_id),
+        )
+
+    # Load and insert assets
+    assets = loader.load_assets()
+    for asset in assets:
+        category_str = asset.category.value if hasattr(asset.category, 'value') else str(asset.category) if asset.category else None
+        cursor.execute(
+            "INSERT OR IGNORE INTO assets (symbol, name, category, report_id) VALUES (?, ?, ?, ?)",
+            (asset.symbol, asset.name, category_str, seed_report_id),
+        )
+
+    conn.commit()
 
 
 def _deterministic_uuid_bytes(value: str) -> bytes:

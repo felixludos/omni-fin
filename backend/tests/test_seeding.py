@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import uuid
 from pathlib import Path
 
@@ -11,7 +10,7 @@ import pytest
 import yaml
 
 from omnifin.core.db import DatabaseSession, init_db
-from omnifin.models import Account, Asset, Tag, clear_global_identity_map
+from omnifin.models import Account, Asset, Tag
 
 
 # Resolve the seed data directory relative to the project root.
@@ -19,13 +18,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]  # backend/tests -> project 
 SEED_DATA_DIR = (_PROJECT_ROOT / "cloud_data" / "seed_data").resolve()
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_identity_map():
-    clear_global_identity_map()
-    yield
-    clear_global_identity_map()
 
 
 class _SeedDataLoader:
@@ -454,17 +446,18 @@ class TestEdgeCases:
 # ── CLI integration test (optional, slow but valuable) ────────────────────────
 
 
-# ── Auto-seed verification tests (DatabaseSession.initialize=True) ─────────────
+# ── Auto-seed verification tests (DatabaseSession.initialize=True + explicit seed) ─────────────
 
 
 class TestAutoSeedOnInit:
-    """Verify that DatabaseSession(initialize=True) automatically seeds the DB."""
+    """Verify that seeding works correctly when explicitly triggered after initialization."""
 
     def test_fresh_db_has_seed_tags(self, tmp_path):
-        """A freshly initialized DB should have seed tag rows without manual seeding."""
+        """A freshly initialized DB should have seed tag rows after explicit seeding."""
         db_path = str(tmp_path / "auto.db")
         with DatabaseSession(db_path, initialize=True) as session:
-            pass  # session closed
+            from omnifin.db.seeding import seed_database
+            seed_database(session.conn)
 
         from omnifin.db.seeding import SeedDataLoader
 
@@ -477,7 +470,8 @@ class TestAutoSeedOnInit:
     def test_fresh_db_has_seed_accounts(self, tmp_path):
         db_path = str(tmp_path / "auto_acct.db")
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            from omnifin.db.seeding import seed_database
+            seed_database(session.conn)
 
         from omnifin.db.seeding import SeedDataLoader
         loader = SeedDataLoader("")
@@ -489,7 +483,8 @@ class TestAutoSeedOnInit:
     def test_fresh_db_has_seed_assets(self, tmp_path):
         db_path = str(tmp_path / "auto_asset.db")
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            from omnifin.db.seeding import seed_database
+            seed_database(session.conn)
 
         from omnifin.db.seeding import SeedDataLoader
         loader = SeedDataLoader("")
@@ -499,10 +494,11 @@ class TestAutoSeedOnInit:
             assert count == len(assets), f"expected {len(assets)} rows, got {count}"
 
     def test_double_init_no_duplicates(self, tmp_path):
-        """Initializing twice must not create duplicate seed rows."""
+        """Initializing twice with explicit seed must not create duplicate seed rows."""
         db_path = str(tmp_path / "double.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as s1:
-            pass  # first init seeds the DB
+            seed_database(s1.conn)
 
         from omnifin.db.seeding import SeedDataLoader
         loader = SeedDataLoader("")
@@ -510,7 +506,7 @@ class TestAutoSeedOnInit:
 
         # Re-initialize (simulate restart or new session) — should be no-op since tables are populated.
         with DatabaseSession(db_path, initialize=True) as s2:
-            pass  # second init; _seed_if_empty should skip
+            seed_database(s2.conn)  # second init; _seed_if_empty should skip
 
         with DatabaseSession(db_path, initialize=False) as s3:
             count = len(s3.execute("SELECT * FROM tags").fetchall())
@@ -526,8 +522,9 @@ class TestSeedReportProvenance:
     def test_seed_report_is_created(self, tmp_path):
         """A 'System Seed' report should be created when seeding happens."""
         db_path = str(tmp_path / "prov.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            seed_database(session.conn)
 
         with DatabaseSession(db_path, initialize=False) as s2:
             rows = s2.execute(
@@ -538,8 +535,9 @@ class TestSeedReportProvenance:
     def test_seeded_tags_have_report_id(self, tmp_path):
         """All seeded tag rows should reference the seed report (no NULL)."""
         db_path = str(tmp_path / "prov_tag.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            seed_database(session.conn)
 
         with DatabaseSession(db_path, initialize=False) as s2:
             rows = s2.execute("SELECT report_id FROM tags WHERE report_id IS NULL").fetchall()
@@ -548,8 +546,9 @@ class TestSeedReportProvenance:
     def test_seeded_accounts_have_report_id(self, tmp_path):
         """All seeded account rows should reference the seed report (no NULL)."""
         db_path = str(tmp_path / "prov_acc.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            seed_database(session.conn)
 
         with DatabaseSession(db_path, initialize=False) as s2:
             rows = s2.execute("SELECT report_id FROM accounts WHERE report_id IS NULL").fetchall()
@@ -558,8 +557,9 @@ class TestSeedReportProvenance:
     def test_seeded_assets_have_report_id(self, tmp_path):
         """All seeded asset rows should reference the seed report (no NULL)."""
         db_path = str(tmp_path / "prov_asset.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            seed_database(session.conn)
 
         with DatabaseSession(db_path, initialize=False) as s2:
             rows = s2.execute("SELECT report_id FROM assets WHERE report_id IS NULL").fetchall()
@@ -568,8 +568,9 @@ class TestSeedReportProvenance:
     def test_seed_report_has_valid_uuid(self, tmp_path):
         """The seed report's report_id should be a valid 16-byte UUID."""
         db_path = str(tmp_path / "prov_uuid.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            seed_database(session.conn)
 
         with DatabaseSession(db_path, initialize=False) as s2:
             row = s2.execute("SELECT report_id FROM reports WHERE name = 'System Seed'").fetchone()
@@ -582,8 +583,9 @@ class TestSeedReportProvenance:
         import datetime as _dt
 
         db_path = str(tmp_path / "prov_dt.db")
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_path, initialize=True) as session:
-            pass
+            seed_database(session.conn)
 
         with DatabaseSession(db_path, initialize=False) as s2:
             row = s2.execute("SELECT date FROM reports WHERE name = 'System Seed'").fetchone()
@@ -598,8 +600,10 @@ class TestCLIIntegration:
 
     def _create_seed_db(self, tmp_path: Path):
         db_file = tmp_path / "cli_test.db"
+        from omnifin.db.seeding import seed_database
         with DatabaseSession(db_file, initialize=True) as session:
             init_db(session.conn)  # type: ignore[arg-type]
+            seed_database(session.conn)
         return str(db_file)
 
     def test_seed_database_function(self, tmp_path):
