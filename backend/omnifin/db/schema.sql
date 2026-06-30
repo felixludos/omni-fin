@@ -17,10 +17,7 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE TABLE IF NOT EXISTS assets (
     symbol TEXT PRIMARY KEY,
     name TEXT,
-    category TEXT CHECK(category IS NULL OR category IN (
-        'fiat', 'equity', 'crypto', 'bond', 'etf', 'mutual_fund',
-        'cash_equivalent', 'commodity', 'derivative', 'unknown'
-    )),
+    category TEXT,
     report_id BLOB CHECK(report_id IS NULL OR length(report_id) = 16),
     FOREIGN KEY(report_id) REFERENCES reports(report_id)
 ) STRICT;
@@ -40,7 +37,6 @@ CREATE TABLE IF NOT EXISTS accounts (
     account_id BLOB PRIMARY KEY CHECK(length(account_id) = 16),
     name TEXT NOT NULL,
     type TEXT CHECK(type IS NULL OR type IN ('internal', 'external', 'merchant', 'brokerage', 'bank', 'tax_authority')),
-    institution TEXT,
     report_id BLOB CHECK(report_id IS NULL OR length(report_id) = 16),
     FOREIGN KEY(report_id) REFERENCES reports(report_id)
 ) STRICT;
@@ -82,18 +78,11 @@ CREATE TABLE IF NOT EXISTS transfer_matches (
     CHECK(source_transfer_id != receiver_transfer_id)
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS transfer_times (
-    transfer_id BLOB PRIMARY KEY CHECK(length(transfer_id) = 16),
-    initiated_at TEXT,
-    settled_at TEXT NOT NULL,
-    FOREIGN KEY(transfer_id) REFERENCES transfers(transfer_id) ON DELETE CASCADE
-) STRICT;
-
 CREATE TABLE IF NOT EXISTS locations (
     location_id BLOB PRIMARY KEY CHECK(length(location_id) = 16),
     city TEXT,
     state TEXT,
-    category TEXT NOT NULL
+    country TEXT NOT NULL
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS transfer_locations (
@@ -118,7 +107,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS event_links (
     event_1_id BLOB NOT NULL CHECK(length(event_1_id) = 16) REFERENCES events(event_id) ON DELETE CASCADE,
     event_2_id BLOB NOT NULL CHECK(length(event_2_id) = 16) REFERENCES events(event_id) ON DELETE CASCADE,
-    link TEXT,
+    link_type TEXT,
     PRIMARY KEY (event_1_id, event_2_id),
     CHECK(event_1_id != event_2_id)
 ) STRICT;
@@ -141,12 +130,13 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE TABLE IF NOT EXISTS entity_accounts (
     entity_id BLOB NOT NULL CHECK(length(entity_id) = 16) REFERENCES entities(entity_id) ON DELETE CASCADE,
     account_id BLOB NOT NULL CHECK(length(account_id) = 16) REFERENCES accounts(account_id) ON DELETE CASCADE,
+    relationship TEXT,
     PRIMARY KEY (entity_id, account_id)
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS tags (
     tag_id BLOB PRIMARY KEY CHECK(length(tag_id) = 16),
-    name TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
     category TEXT,
     report_id BLOB CHECK(report_id IS NULL OR length(report_id) = 16),
     FOREIGN KEY(report_id) REFERENCES reports(report_id)
@@ -176,9 +166,16 @@ CREATE TABLE IF NOT EXISTS statement_tags (
     PRIMARY KEY (statement_id, tag_id)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS event_tags (
+    event_id BLOB NOT NULL CHECK(length(event_id) = 16) REFERENCES events(event_id) ON DELETE CASCADE,
+    tag_id BLOB NOT NULL CHECK(length(tag_id) = 16) REFERENCES tags(tag_id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, tag_id)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS comments (
     comment_id BLOB PRIMARY KEY CHECK(length(comment_id) = 16),
     content TEXT NOT NULL,
+    type TEXT,
     created_at TEXT NOT NULL,
     report_id BLOB CHECK(report_id IS NULL OR length(report_id) = 16),
     FOREIGN KEY(report_id) REFERENCES reports(report_id)
@@ -214,11 +211,10 @@ CREATE TABLE IF NOT EXISTS report_comments (
     PRIMARY KEY (report_id, comment_id)
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS comment_updates (
-    original_id BLOB NOT NULL CHECK(length(original_id) = 16) REFERENCES comments(comment_id) ON DELETE CASCADE,
-    update_id BLOB NOT NULL CHECK(length(update_id) = 16) REFERENCES comments(comment_id) ON DELETE CASCADE,
-    PRIMARY KEY (original_id, update_id),
-    CHECK(original_id != update_id)
+CREATE TABLE IF NOT EXISTS event_comments (
+    event_id BLOB NOT NULL CHECK(length(event_id) = 16) REFERENCES events(event_id) ON DELETE CASCADE,
+    comment_id BLOB NOT NULL CHECK(length(comment_id) = 16) REFERENCES comments(comment_id) ON DELETE CASCADE,
+    PRIMARY KEY (event_id, comment_id)
 ) STRICT;
 
 -- Optional provenance layer for raw CSV rows or document chunks used during ingestion.

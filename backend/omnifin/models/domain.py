@@ -723,10 +723,11 @@ class Report(Commentable):
         return summary
 
 
-from omnifin.models.categories import AssetType, Country, EntityType, EventType, FundType, FundEquityRatioType, SaleTerm
+from omnifin.models.categories import AssetType, Country, EntityType, EventType, FundType, FundEquityRatioType, SaleTerm, TagCategories
 
 
 class Asset(Tagable):
+    """A fungible financial instrument or currency that can be held in an account."""
     symbol: str = Field(description="Canonical asset symbol used as primary key (e.g., USD, AAPL, VWCE).")
     name: Optional[str] = Field(default=None, description="Optional human-readable asset name.")
     category: Optional[AssetType | str] = Field(
@@ -737,6 +738,7 @@ class Asset(Tagable):
 
 
 class Investment(Asset):
+    """A financial instrument that is a security or fund, typically subject to tax reporting."""
     nyse_symbol: Optional[str] = Field(default=None, description="NYSE ticker alias if available.")
     ibkr_symbol: Optional[str] = Field(default=None, description="Interactive Brokers symbol if it differs from canonical symbol.")
     identifier: Optional[str] = Field(default=None, description="ISIN, CUSIP, WKN, or other stable instrument identifier.")
@@ -749,6 +751,7 @@ class Investment(Asset):
 
 
 class Account(Tagable, Commentable):
+    """A financial account that can hold assets and record transactions."""
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = None
     type: Optional[str] = None
@@ -774,6 +777,7 @@ class Account(Tagable, Commentable):
 
 
 class Statement(Tagable, Commentable):
+    """A financial statement that reports account balance of a specific asset at a specific date."""
     id: UUID = Field(default_factory=uuid7)
     date: Optional[datetime] = None
     account: Optional[Account] = None
@@ -783,6 +787,7 @@ class Statement(Tagable, Commentable):
 
 
 class Transfer(Tagable, Commentable):
+    """A transfer of assets between accounts, representing a movement of value."""
     id: UUID = Field(default_factory=uuid7)
     date: Optional[datetime] = None
     sender: Optional[Account] = None
@@ -875,6 +880,7 @@ class Transfer(Tagable, Commentable):
 
 
 class Location(DomainModel):
+    """A physical or virtual location associated with a transfer, such as a bank branch or ATM."""
     id: UUID = Field(default_factory=uuid7)
     city: Optional[str] = None
     state: Optional[str] = None
@@ -882,6 +888,7 @@ class Location(DomainModel):
 
 
 class Event(DomainModel):
+    """A group of transfers or other financial activities that are logically related, such as a trade or conversion."""
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = Field(default=None, description="Human-readable event label such as 'sell', 'dividend', or 'wire transfer'.")
     type: Optional[EventType | str] = Field(
@@ -898,6 +905,7 @@ class Event(DomainModel):
 
 
 class InvestmentSale(DomainModel):
+    """Additional information about a sale of an investment for tax reporting purposes."""
     id: UUID = Field(
         default_factory=uuid7,
         description="Sale identifier. Prefer sharing the same UUID as the corresponding Event.id for one-to-one linking.",
@@ -920,22 +928,29 @@ class InvestmentSale(DomainModel):
 
 
 class Entity(DomainModel):
+    """A legal or organizational entity that can hold assets or engage in financial transactions."""
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = None
     legal_type: Optional[EntityType | str] = None
 
 
 class Tag(DomainModel):
+    """A label or category that can be applied to financial records for organization or reporting purposes."""
     id: UUID = Field(default_factory=uuid7)
-    name: Optional[str] = None
-    category: Optional[Country | str] = None
+    name: str = None
+    category: Optional[str] = None
     recorded: Optional[Report] = None
 
 
+class AssetTag(Tag):
+    category: Optional[AssetTagOptions | str] = None
+
+
 class Comment(DomainModel):
+    """A user-provided note or annotation associated with a financial record."""
     id: UUID = Field(default_factory=uuid7)
     created_at: datetime = Field(default_factory=utcnow)
-    content: Optional[str] = None
+    content: str = None
     recorded: Optional[Report] = None
 
 

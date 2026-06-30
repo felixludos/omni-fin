@@ -52,7 +52,7 @@ def structured_completion(
         ],
         temperature=temperature,
         max_tokens=max_tokens,
-        response_format={"type": "json_object"},
+        response_format=response_model, #{"type": "json_object"},
     )
     content = response.choices[0].message.content or "{}"
     return response_model.model_validate_json(content)

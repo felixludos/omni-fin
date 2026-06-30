@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnifin.models.categories import EventType, SaleTerm
-from omnifin.models.domain import Statement, Transfer
+from omnifin.models.domain import Asset, Investment, Statement, Transfer
 
 
 class Portfolio(BaseModel):
@@ -138,3 +138,11 @@ class Sale(Trade):
 		if self.acquisition is not None and self.acquisition_date is None:
 			raise ValueError('acquisition_date must be provided when acquisition transfer is present')
 		return self
+
+
+
+class ParsingResult(BaseModel):
+	summary: str
+	confidence: float = Field(..., ge=0.0, le=1.0)
+	objects: list[Transfer | Trade | Sale | Asset | Investment]
+

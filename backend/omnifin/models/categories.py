@@ -209,3 +209,17 @@ class Country(str, Enum):
 	"""Other countries"""
 
 
+class AssetTagOptions(str, Enum):
+	"""Canonical high-level tag categories used for labeling and organizing financial records."""
+
+	GEOGRAPHIC = "geographic"
+	"""Tags related to geographic locations, such as countries, regions, or cities."""
+
+	SECTOR = "sector"
+	"""Tags related to industry sectors or market segments."""
+
+	STRATEGY = "strategy"
+	"""Tags related to investment strategies or approaches."""
+
+	OTHER = "other"
+	"""Tags that do not fit into the predefined categories."""
