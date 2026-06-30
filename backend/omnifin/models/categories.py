@@ -223,3 +223,37 @@ class AssetTagOptions(str, Enum):
 
 	OTHER = "other"
 	"""Tags that do not fit into the predefined categories."""
+
+
+class AccountTagOptions(str, Enum):
+	"""Canonical high-level tag categories used for labeling and organizing financial accounts."""
+
+	INCOME = "income"
+	"""Tags related to income accounts, such as salary, dividends, or other sources of income."""
+
+	EXPENSE = "expense"
+	"""Tags related to expense accounts, such as bills, subscriptions, or other spending categories."""
+
+	BANK_US = "bank_us"
+	"""Tags related to US-based bank accounts."""
+
+	BANK_EU = "bank_eu"
+	"""Tags related to European-based bank accounts."""
+
+	BROKERAGE = "brokerage"
+	"""Tags related to brokerage accounts, such as stock trading or investment accounts."""
+
+	RETIREMENT = "retirement"
+	"""Tags related to retirement accounts, such as 401(k), IRA, or pension accounts."""
+
+	HSA = "hsa"
+	"""Tags related to Health Savings Accounts (HSA)."""
+
+	CREDIT_CARD = "credit_card"
+	"""Tags related to credit card accounts."""
+
+	FINTECH = "fintech"
+	"""Tags related to financial technology (fintech) accounts, such as digital wallets, payment apps, or online banking platforms."""
+
+	OTHER = "other"
+	"""Tags that do not fit into the predefined categories."""
