@@ -86,12 +86,34 @@ def _tables_are_empty(conn: sqlite3.Connection) -> bool:
     return True
 
 
+def _create_seed_report(conn: sqlite3.Connection) -> bytes:
+    """Create a dedicated ``reports`` row for seed data and return its report_id.
+
+    The seed report carries provenance context so all seeded objects can be
+    traced back to the initialization event rather than being orphaned (NULL).
+    Uses a deterministic UUID derived from a fixed content string so re-running
+    on an already-seeded DB produces no duplicates via ``INSERT OR IGNORE``.
+    """
+    import datetime
+
+    report_id = _deterministic_uuid_bytes("seed:report")
+    today = datetime.date.today().isoformat()  # e.g. "2026-07-01"
+
+    conn.execute(
+        "INSERT OR IGNORE INTO reports (report_id, date, name, author) VALUES (?, ?, ?, ?)",
+        (report_id, today, "System Seed", "omnifin"),
+    )
+    return report_id
+
+
 def _seed_if_empty(conn: sqlite3.Connection) -> None:
     """Seed the database from YAML files IF all seed tables are currently empty.
 
     This is a no-op when called on an already-populated database, making it safe
     to call on every ``init_db()`` invocation. It takes an open ``sqlite3.Connection``
     so it can participate in the same transaction as schema initialization.
+
+    All seeded objects are linked to a dedicated "System Seed" report for provenance.
     """
     if not _tables_are_empty(conn):
         return  # data already present — skip
@@ -99,28 +121,31 @@ def _seed_if_empty(conn: sqlite3.Connection) -> None:
     loader = SeedDataLoader("")  # path only used for file resolution; SEED_DATA_DIR is absolute
     cursor = conn.cursor()
 
+    # Create a dedicated seed report for provenance tracking.
+    seed_report_id = _create_seed_report(conn)
+
     # --- tags -------------------------------------------------------------------
     for tag in loader.load_tags():
         tag_id_bytes = _deterministic_uuid_bytes(f"tag:{tag.name}")
         cursor.execute(
-            "INSERT OR IGNORE INTO tags (tag_id, name, category) VALUES (?, ?, ?)",
-            (tag_id_bytes, tag.name, tag.category),
+            "INSERT OR IGNORE INTO tags (tag_id, name, category, report_id) VALUES (?, ?, ?, ?)",
+            (tag_id_bytes, tag.name, tag.category, seed_report_id),
         )
 
     # --- accounts ---------------------------------------------------------------
     for account in loader.load_accounts():
         acc_id_bytes = _deterministic_uuid_bytes(f"acc:{account.name}")
         cursor.execute(
-            "INSERT OR IGNORE INTO accounts (account_id, name, type) VALUES (?, ?, ?)",
-            (acc_id_bytes, account.name, account.type),
+            "INSERT OR IGNORE INTO accounts (account_id, name, type, report_id) VALUES (?, ?, ?, ?)",
+            (acc_id_bytes, account.name, account.type, seed_report_id),
         )
 
     # --- assets -----------------------------------------------------------------
     for asset in loader.load_assets():
         category_str = asset.category.value if hasattr(asset.category, 'value') else str(asset.category) if asset.category else None
         cursor.execute(
-            "INSERT OR IGNORE INTO assets (symbol, name, category) VALUES (?, ?, ?)",
-            (asset.symbol, asset.name, category_str),
+            "INSERT OR IGNORE INTO assets (symbol, name, category, report_id) VALUES (?, ?, ?, ?)",
+            (asset.symbol, asset.name, category_str, seed_report_id),
         )
 
 
@@ -129,7 +154,8 @@ def seed_database(db_path: str | Path = "omnifin.db") -> None:
 
     This function loads tags, accounts, and assets from their respective YAML
     files in ``cloud_data/seed_data/`` and inserts them into the database.
-    It uses upsert logic to avoid duplicating existing entries.
+    It uses upsert logic to avoid duplicating existing entries and links all
+    seeded objects to a dedicated "System Seed" report for provenance tracking.
     """
     import sqlite3
     from omnifin.core.db import DatabaseSession
@@ -137,21 +163,25 @@ def seed_database(db_path: str | Path = "omnifin.db") -> None:
     loader = SeedDataLoader(db_path)
 
     with DatabaseSession(db_path, initialize=True) as session:
+        # Create seed report if not already present (idempotent).
+        seed_report_id = _create_seed_report(session.conn)  # type: ignore[arg-type]
+
+        cursor = session.conn.cursor()  # type: ignore[union-attr]
+
         # Load and insert tags
         tags = loader.load_tags()
-        cursor = session.conn.cursor()  # type: ignore[union-attr]
         for tag in tags:
             cursor.execute(
-                "INSERT OR IGNORE INTO tags (tag_id, name, category) VALUES (?, ?, ?)",
-                (str(tag.id), tag.name, tag.category),
+                "INSERT OR IGNORE INTO tags (tag_id, name, category, report_id) VALUES (?, ?, ?, ?)",
+                (str(tag.id), tag.name, tag.category, seed_report_id),
             )
 
         # Load and insert accounts
         accounts = loader.load_accounts()
         for account in accounts:
             cursor.execute(
-                "INSERT OR IGNORE INTO accounts (account_id, name, type) VALUES (?, ?, ?)",
-                (str(account.id), account.name, account.type),
+                "INSERT OR IGNORE INTO accounts (account_id, name, type, report_id) VALUES (?, ?, ?, ?)",
+                (str(account.id), account.name, account.type, seed_report_id),
             )
 
         # Load and insert assets
@@ -159,8 +189,8 @@ def seed_database(db_path: str | Path = "omnifin.db") -> None:
         for asset in assets:
             category_str = asset.category.value if hasattr(asset.category, 'value') else str(asset.category) if asset.category else None
             cursor.execute(
-                "INSERT OR IGNORE INTO assets (symbol, name, category) VALUES (?, ?, ?)",
-                (asset.symbol, asset.name, category_str),
+                "INSERT OR IGNORE INTO assets (symbol, name, category, report_id) VALUES (?, ?, ?, ?)",
+                (asset.symbol, asset.name, category_str, seed_report_id),
             )
 
         session.conn.commit()  # type: ignore[union-attr]

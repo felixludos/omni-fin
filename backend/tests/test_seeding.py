@@ -517,6 +517,82 @@ class TestAutoSeedOnInit:
             assert count == len(tags), f"duplicate seed rows created: expected {len(tags)}, got {count}"
 
 
+# ── Provenance / report_id tests ─────────────────────────────────────────────
+
+
+class TestSeedReportProvenance:
+    """Verify that seeded objects carry a proper report_id for provenance."""
+
+    def test_seed_report_is_created(self, tmp_path):
+        """A 'System Seed' report should be created when seeding happens."""
+        db_path = str(tmp_path / "prov.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        with DatabaseSession(db_path, initialize=False) as s2:
+            rows = s2.execute(
+                "SELECT report_id, date, name, author FROM reports WHERE name = 'System Seed'"
+            ).fetchall()
+            assert len(rows) == 1, f"expected exactly one seed report, got {len(rows)}"
+
+    def test_seeded_tags_have_report_id(self, tmp_path):
+        """All seeded tag rows should reference the seed report (no NULL)."""
+        db_path = str(tmp_path / "prov_tag.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        with DatabaseSession(db_path, initialize=False) as s2:
+            rows = s2.execute("SELECT report_id FROM tags WHERE report_id IS NULL").fetchall()
+            assert len(rows) == 0, f"some seed tags have NULL report_id: {len(rows)} rows"
+
+    def test_seeded_accounts_have_report_id(self, tmp_path):
+        """All seeded account rows should reference the seed report (no NULL)."""
+        db_path = str(tmp_path / "prov_acc.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        with DatabaseSession(db_path, initialize=False) as s2:
+            rows = s2.execute("SELECT report_id FROM accounts WHERE report_id IS NULL").fetchall()
+            assert len(rows) == 0, f"some seed accounts have NULL report_id: {len(rows)} rows"
+
+    def test_seeded_assets_have_report_id(self, tmp_path):
+        """All seeded asset rows should reference the seed report (no NULL)."""
+        db_path = str(tmp_path / "prov_asset.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        with DatabaseSession(db_path, initialize=False) as s2:
+            rows = s2.execute("SELECT report_id FROM assets WHERE report_id IS NULL").fetchall()
+            assert len(rows) == 0, f"some seed assets have NULL report_id: {len(rows)} rows"
+
+    def test_seed_report_has_valid_uuid(self, tmp_path):
+        """The seed report's report_id should be a valid 16-byte UUID."""
+        db_path = str(tmp_path / "prov_uuid.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        with DatabaseSession(db_path, initialize=False) as s2:
+            row = s2.execute("SELECT report_id FROM reports WHERE name = 'System Seed'").fetchone()
+            assert row is not None, "seed report not found"
+            rid = row["report_id"]
+            assert len(rid) == 16, f"expected 16-byte UUID, got {len(rid)} bytes: {rid!r}"
+
+    def test_seed_report_date_is_today(self, tmp_path):
+        """The seed report's date should be today (ISO format)."""
+        import datetime as _dt
+
+        db_path = str(tmp_path / "prov_dt.db")
+        with DatabaseSession(db_path, initialize=True) as session:
+            pass
+
+        with DatabaseSession(db_path, initialize=False) as s2:
+            row = s2.execute("SELECT date FROM reports WHERE name = 'System Seed'").fetchone()
+            assert row is not None, "seed report not found"
+            seed_date = row["date"][:10]  # YYYY-MM-DD
+            today = _dt.date.today().isoformat()
+            assert seed_date == today, f"expected date {today}, got {seed_date}"
+
+
 class TestCLIIntegration:
     """Test that the seed_database function works end-to-end."""
 
