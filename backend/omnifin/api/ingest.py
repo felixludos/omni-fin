@@ -441,7 +441,7 @@ async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> tuple[RowInt
             base_url=base_url,
             api_key="ollama",
             temperature=0.0,
-            max_tokens=1200,
+            max_tokens=5000,
             timeout=90.0,
         )
         return (

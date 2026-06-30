@@ -33,9 +33,14 @@ def structured_completion(
 
     from openai import OpenAI
 
-    schema = response_model.model_json_schema()
     client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
-    response = client.chat.completions.create(
+
+    # Newer versions of the OpenAI library (>= 1.32.0) support ``parse()`` which
+    # accepts a Pydantic model and returns a ParsedChatCompletion with a ``.parsed``
+    # attribute containing the validated object directly. Older versions only have
+    # ``create()`` and require manual JSON extraction + validation.
+
+    response = client.chat.completions.parse(
         model=model,
         messages=[
             {
@@ -47,12 +52,18 @@ def structured_completion(
             },
             {
                 "role": "user",
-                "content": f"Schema:\n{schema}\n\nPrompt:\n{prompt}",
+                "content": prompt,
             },
         ],
+        response_format=response_model,
         temperature=temperature,
         max_tokens=max_tokens,
-        response_format=response_model, #{"type": "json_object"},
     )
+    # When using parse() with a Pydantic model, the validated object is on
+    # ``.parsed``, not in ``.message.content``.
+    return response.parsed if hasattr(response, "parsed") and response.parsed else response_model.model_validate_json(
+        response.choices[0].message.content or "{}"
+    )
+
     content = response.choices[0].message.content or "{}"
     return response_model.model_validate_json(content)

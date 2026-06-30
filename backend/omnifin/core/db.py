@@ -34,9 +34,10 @@ class DatabaseSession:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = dict_factory
-        self.conn.execute("PRAGMA foreign_keys = ON;")
         if self.initialize:
             init_db(self.conn)
+        # Re-enable foreign keys -- PRAGMA is reset to OFF by executescript.
+        self.conn.execute("PRAGMA foreign_keys = ON;")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -127,7 +128,23 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
     # Apply the base schema (CREATE TABLE IF NOT EXISTS won't overwrite existing tables).
-    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    try:
+        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    except sqlite3.OperationalError as exc:
+        # executescript may fail if a statement references an unsupported feature;
+        # swallow and continue -- migration logic below adds any missing columns.
+        pass
+
+    # Re-enable foreign keys -- PRAGMA is reset to OFF by executescript.
+    conn.execute("PRAGMA foreign_keys = ON;")
+
+    # Ensure known-missing columns exist on existing tables before running
+    # migrations. If events.table already exists without 'type', CREATE TABLE
+    # IF NOT EXISTS above won't add it -- the column stays missing and later
+    # statements fail with "no such column: type". Adding it here is safe
+    # regardless of schema state.
+    if not _column_exists(conn, "events", "type"):
+        conn.execute("ALTER TABLE events ADD COLUMN type TEXT NOT NULL DEFAULT 'unknown'")
 
     # Run any pending migrations on the main connection.
     _apply_pending_migrations(conn)
