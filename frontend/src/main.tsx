@@ -36,6 +36,13 @@ type IngestRow = {
   updated_at: string
 }
 
+type AccountInfo = {
+  id: string
+  name?: string | null
+  type?: string | null
+  institution?: string | null
+}
+
 type IngestJob = {
   id: string
   filename: string
@@ -110,6 +117,8 @@ function parseInterpretation(text: string): RowInterpretation {
 
 function App() {
   const [job, setJob] = useState<IngestJob | null>(null)
+  const [accounts, setAccounts] = useState<AccountInfo[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
   const [fileName, setFileName] = useState<string>('')
   const [isUploading, setIsUploading] = useState<boolean>(false)
@@ -148,6 +157,11 @@ function App() {
   }, [selectedRowIndex, selectedRow?.updated_at])
 
   useEffect(() => {
+    fetch('/api/accounts')
+      .then((response) => response.json())
+      .then((data: AccountInfo[]) => setAccounts(data))
+      .catch((_error: unknown) => {})
+
     if (!job) {
       return
     }
@@ -179,10 +193,14 @@ function App() {
     setCommitResult(null)
     try {
       const csvText = await file.text()
+      let body: Record<string, string> = { filename: file.name, csv_text: csvText }
+      if (selectedAccountId) {
+        body.account_id = selectedAccountId
+      }
       const response = await fetch('/api/ingest/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, csv_text: csvText })
+        body: JSON.stringify(body)
       })
       if (!response.ok) {
         throw new Error(await response.text())
@@ -362,6 +380,23 @@ function App() {
       <header className="topbar">
         <div>
           <h1>Omnifin AI Ingestion Studio</h1>
+          {accounts.length > 0 && (
+            <div className="account-selector">
+              <label htmlFor="source-account">Source Account:</label>
+              <select
+                id="source-account"
+                value={selectedAccountId}
+                onChange={(event) => setSelectedAccountId(event.currentTarget.value)}
+              >
+                <option value="">— No source account —</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name || 'Unnamed'} ({account.type ? account.type : ''}){account.institution ? ` — ${account.institution}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <p>{statusMessage}</p>
           {job && (
             <p>

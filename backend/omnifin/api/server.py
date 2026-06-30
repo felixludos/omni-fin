@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 
 from omnifin.api.ingest import router as ingest_router
@@ -17,6 +18,15 @@ DB_ENV = "OMNIFIN_DB"
 
 app = FastAPI(title="Omnifin API", version="0.1.0")
 app.include_router(ingest_router)
+
+# Allow frontend dev server to proxy requests without CORS issues.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def db_path() -> str:

@@ -10,7 +10,7 @@ import os
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -79,11 +79,13 @@ class IngestJob(BaseModel):
     paused: bool = False
     status: Literal["running", "paused", "completed", "error"] = "running"
     rows: list[RowState]
+    account_id: Optional[str] = None
 
 
 class CreateJobRequest(BaseModel):
     filename: str
     csv_text: str
+    account_id: Optional[str] = None
 
 
 class UpdateRowRequest(BaseModel):
@@ -118,11 +120,51 @@ class LlmRowResponse(BaseModel):
     objects: list[ProposedObject] = Field(default_factory=list)
 
 
+class AccountInfo(BaseModel):
+    id: str
+    name: Optional[str] = None
+    type: Optional[str] = None
+    institution: Optional[str] = None
+
+
+def _get_source_account_info(account_id: str) -> dict[str, Any] | None:
+    """Load a single account by id to include as source context in AI prompts."""
+    with DatabaseSession(_db_path()) as session:
+        row = session.execute(
+            "SELECT * FROM accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": str(row["id"]) if row["id"] else "",
+        "name": row["name"] or "",
+        "type": row["type"] or "",
+        "institution": row["institution"] or "",
+    }
+
+
 class IngestionJobManager:
     def __init__(self) -> None:
         self._jobs: dict[str, IngestJob] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
+
+    async def list_accounts(self) -> list[AccountInfo]:
+        with DatabaseSession(_db_path()) as session:
+            accounts: list[dict[str, str]] = []
+            for account in session.all(Account, limit=400):
+                if account.name:
+                    accounts.append(
+                        {
+                            "id": str(account.id),
+                            "name": account.name or "",
+                            "type": account.type or "",
+                            "institution": account.institution or "",
+                        }
+                    )
+
+            ordered = sorted(accounts, key=lambda item: (item["name"] or "").lower())
+            return [AccountInfo(**acc) for acc in ordered]
 
     async def create_job(self, payload: CreateJobRequest) -> IngestJob:
         reader = csv.DictReader(io.StringIO(payload.csv_text))
@@ -151,6 +193,7 @@ class IngestionJobManager:
             document_hash=stable_hash_bytes(payload.csv_text).hex(),
             headers=list(reader.fieldnames),
             rows=rows,
+            account_id=payload.account_id or None,
         )
 
         async with self._lock:
@@ -367,6 +410,11 @@ class IngestionJobManager:
 
 async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> tuple[RowInterpretation, str | None]:
     accounts, assets = _load_existing_context()
+
+    source_account_info = None
+    if job.account_id:
+        source_account_info = _get_source_account_info(job.account_id)
+
     prompt = _build_prompt(
         filename=job.filename,
         row_index=row.index,
@@ -377,6 +425,7 @@ async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> tuple[RowInt
         checks=row.checks,
         existing_accounts=accounts,
         existing_assets=assets,
+        source_account=source_account_info,
     )
 
     model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "gemma4:31b")
@@ -418,6 +467,7 @@ def _build_prompt(
     checks: list[str],
     existing_accounts: list[dict[str, str]],
     existing_assets: list[dict[str, str]],
+    source_account: dict[str, Any] | None = None,
 ) -> str:
     if PROMPT_TEMPLATE_PATH.exists():
         template = PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
@@ -435,6 +485,10 @@ def _build_prompt(
         "existing_accounts_json": json.dumps(existing_accounts, ensure_ascii=False, indent=2),
         "existing_assets_json": json.dumps(existing_assets, ensure_ascii=False, indent=2),
     }
+
+    if source_account:
+        replacements["source_account_json"] = json.dumps(source_account, ensure_ascii=False, indent=2)
+
     rendered = template
     for key, value in replacements.items():
         rendered = rendered.replace(f"{{{{{key}}}}}", value)
@@ -442,25 +496,31 @@ def _build_prompt(
 
 
 def _default_prompt_template() -> str:
-    return (
-        "You are an ingestion assistant for Omnifin.\n"
-        "Return a JSON object with keys: summary, confidence, objects.\n"
-        "objects[] item format: {object_type, data, note}.\n"
-        "\n"
-        "Filename: {{filename}}\n"
-        "Row index: {{row_index}}\n"
-        "Document hash: {{document_hash}}\n"
-        "Row hash: {{row_hash}}\n"
-        "Headers: {{headers_json}}\n"
-        "Checks: {{checks_json}}\n"
-        "\n"
-        "Existing accounts:\n{{existing_accounts_json}}\n"
-        "Existing assets:\n{{existing_assets_json}}\n"
-        "\n"
-        "Input row JSON:\n{{row_json}}\n"
-        "\n"
-        "Produce practical objects with complete required fields for transfer/date/unit/sender/receiver/amount.\n"
-    )
+    pieces = [
+        "You are an ingestion assistant for Omnifin.",
+        "Return a JSON object with keys: summary, confidence, objects.",
+        "objects[] item format: {object_type, data, note}.",
+        "",
+        "Filename: {{filename}}",
+        "Row index: {{row_index}}",
+        "Document hash: {{document_hash}}",
+        "Row hash: {{row_hash}}",
+        "Headers: {{headers_json}}",
+        "Checks: {{checks_json}}",
+    ]
+
+    pieces.extend([
+        "",
+        "Source account (optional):\n{{source_account_json}}",
+        "",
+        "Existing accounts:\n{{existing_accounts_json}}",
+        "Existing assets:\n{{existing_assets_json}}",
+        "",
+        "Input row JSON:\n{{row_json}}",
+        "",
+        "Produce practical objects with complete required fields for transfer/date/unit/sender/receiver/amount.",
+    ])
+    return "\n".join(pieces)
 
 
 def _build_row_checks(row: dict[str, str]) -> list[str]:
@@ -741,6 +801,11 @@ def _coerce_date(row: dict[str, str]) -> datetime:
 
 
 manager = IngestionJobManager()
+
+
+@router.get("/accounts", response_model=list[AccountInfo])
+async def list_accounts() -> list[AccountInfo]:
+    return await manager.list_accounts()
 
 
 @router.post("/jobs", response_model=IngestJob)
