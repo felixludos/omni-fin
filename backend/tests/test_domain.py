@@ -55,7 +55,7 @@ def test_investment_inherits_asset_and_maps_to_investments_table():
     assert inv.name == "Vanguard FTSE All-World UCITS ETF"
 
     spec = MODEL_SPECS["Investment"]
-    assert spec.table == "investments"
+    assert spec.table == "assets"
     assert spec.fields["symbol"] == "symbol"
     assert spec.fields["name"] == "name"
 
@@ -243,6 +243,32 @@ def test_investment_sale_persistence_and_event_link(temp_db):
         assert linked_sale.cost_basis == 500.0
         assert linked_sale.term == "long"
 
+        raw_comments = session2.execute(
+            """
+            SELECT c.type, c.content
+            FROM comments c
+            JOIN event_comments ec ON ec.comment_id = c.comment_id
+            WHERE ec.event_id = ?
+            ORDER BY c.type
+            """,
+            (saved_event._db_pk_value(),),
+        ).fetchall()
+        assert {row["type"]: row["content"] for row in raw_comments} == {
+            "acquisition_date": "2025-01-01T00:00:00Z",
+            "acquisition_transfer_id": str(buy.id),
+            "cost_basis": "500.0",
+        }
+        raw_terms = session2.execute(
+            """
+            SELECT t.name, t.category
+            FROM tags t
+            JOIN event_tags et ON et.tag_id = t.tag_id
+            WHERE et.event_id = ?
+            """,
+            (saved_event._db_pk_value(),),
+        ).fetchall()
+        assert raw_terms == [{"name": "long", "category": "sale_term"}]
+
 
 def test_sale_model_schema_has_descriptive_context():
     schema = Sale.model_json_schema()
@@ -253,7 +279,7 @@ def test_sale_model_schema_has_descriptive_context():
     assert "example" in schema
 
 
-def test_transfer_settled_at_roundtrips_via_transfer_times(temp_db):
+def test_transfer_settled_at_roundtrips_via_transfer_comments(temp_db):
     settled = datetime(2026, 1, 2, 15, 30, tzinfo=UTC)
 
     with DatabaseSession(temp_db) as session:
@@ -273,11 +299,17 @@ def test_transfer_settled_at_roundtrips_via_transfer_times(temp_db):
         report.save(usd, acc, transfer)
 
         row = session.execute(
-            "SELECT settled_at FROM transfer_times WHERE transfer_id = ?",
+            """
+            SELECT c.type, c.content
+            FROM comments c
+            JOIN transfer_comments tc ON tc.comment_id = c.comment_id
+            WHERE tc.transfer_id = ?
+            """,
             (transfer._db_pk_value(),),
         ).fetchone()
         assert row is not None
-        assert row["settled_at"] is not None
+        assert row["type"] == "settled_at"
+        assert row["content"] == "2026-01-02T15:30:00Z"
 
     with DatabaseSession(temp_db) as session2:
         saved = session2.get(Transfer, transfer.id)

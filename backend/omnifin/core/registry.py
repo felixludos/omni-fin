@@ -53,6 +53,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
             "id": "comment_id",
             "created_at": "created_at",
             "content": "content",
+            "type": "type",
             "recorded": "report_id",
         },
         dependency_order=1,
@@ -73,20 +74,16 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         generated_pk=False,
     ),
     "Investment": ModelSpec(
-        table="investments",
+        table="assets",
         pk="symbol",
         identity_field="symbol",
         fields={
             "symbol": "symbol",
             "name": "name",
-            "nyse_symbol": "nyse_symbol",
-            "ibkr_symbol": "ibkr_symbol",
-            "identifier": "identifier",
-            "country": "country",
-            "fund_type": "fund_type",
-            "fund_focus": "fund_focus",
+            "category": "category",
+            "recorded": "report_id",
         },
-        dependency_order=3,
+        dependency_order=2,
         required=("symbol",),
         generated_pk=False,
     ),
@@ -123,7 +120,6 @@ MODEL_SPECS: dict[str, ModelSpec] = {
             "id": "account_id",
             "name": "name",
             "type": "type",
-            "institution": "institution",
             "recorded": "report_id",
         },
         dependency_order=3,
@@ -142,17 +138,13 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         required=("type",),
     ),
     "InvestmentSale": ModelSpec(
-        table="investment_sales",
-        pk="sale_id",
+        table="events",
+        pk="event_id",
         identity_field="id",
         fields={
-            "id": "sale_id",
-            "acquisition_date": "acquisition_date",
-            "acquisition": "acquisition_transfer_id",
-            "cost_basis": "cost_basis",
-            "term": "term",
+            "id": "event_id",
         },
-        dependency_order=5,
+        dependency_order=3,
         required=("acquisition_date", "cost_basis", "term"),
     ),
     "Statement": ModelSpec(
@@ -219,6 +211,10 @@ RELATION_SPECS: dict[str, dict[str, tuple[str, str, str, str]]] = {
         "tags": ("asset_tags", "asset_symbol", "Tag", "tag_id"),
         "comments": ("asset_comments", "asset_symbol", "Comment", "comment_id"),
     },
+    "Investment": {
+        "tags": ("asset_tags", "asset_symbol", "Tag", "tag_id"),
+        "comments": ("asset_comments", "asset_symbol", "Comment", "comment_id"),
+    },
     "Account": {
         "tags": ("account_tags", "account_id", "Tag", "tag_id"),
         "comments": ("account_comments", "account_id", "Comment", "comment_id"),
@@ -237,9 +233,13 @@ RELATION_SPECS: dict[str, dict[str, tuple[str, str, str, str]]] = {
     "Report": {
         "comments": ("report_comments", "report_id", "Comment", "comment_id"),
     },
+    "Event": {
+        "tags": ("event_tags", "event_id", "Tag", "tag_id"),
+        "comments": ("event_comments", "event_id", "Comment", "comment_id"),
+    },
 }
 
-NATURAL_KEY_FIELDS: dict[str, ClassVar[tuple[str, ...]]] = {
+NATURAL_KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "Asset": ("symbol",),
     "Investment": ("symbol",),
     "Tag": ("name",),

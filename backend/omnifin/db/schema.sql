@@ -22,17 +22,6 @@ CREATE TABLE IF NOT EXISTS assets (
     FOREIGN KEY(report_id) REFERENCES reports(report_id)
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS investments (
-    symbol TEXT PRIMARY KEY REFERENCES assets(symbol) ON DELETE CASCADE,
-    name TEXT,
-    nyse_symbol TEXT,
-    ibkr_symbol TEXT,
-    identifier TEXT,
-    country TEXT CHECK(country IS NULL OR length(country) = 2),
-    fund_type TEXT,
-    fund_focus TEXT
-) STRICT;
-
 CREATE TABLE IF NOT EXISTS accounts (
     account_id BLOB PRIMARY KEY CHECK(length(account_id) = 16),
     name TEXT NOT NULL,
@@ -110,14 +99,6 @@ CREATE TABLE IF NOT EXISTS event_links (
     link_type TEXT,
     PRIMARY KEY (event_1_id, event_2_id),
     CHECK(event_1_id != event_2_id)
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS investment_sales (
-    sale_id BLOB PRIMARY KEY CHECK(length(sale_id) = 16) REFERENCES events(event_id) ON DELETE CASCADE,
-    acquisition_date TEXT NOT NULL,
-    acquisition_transfer_id BLOB CHECK(length(acquisition_transfer_id) = 16) REFERENCES transfers(transfer_id) ON DELETE SET NULL,
-    cost_basis REAL NOT NULL CHECK(cost_basis >= 0),
-    term TEXT NOT NULL CHECK(term IN ('short', 'long', 'other', 'unknown'))
 ) STRICT;
 
 
@@ -234,6 +215,6 @@ CREATE INDEX IF NOT EXISTS idx_transfers_sender ON transfers(sender_account_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_receiver ON transfers(receiver_account_id);
 CREATE INDEX IF NOT EXISTS idx_statements_account_asset_date ON statements(account_id, asset_symbol, date);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+CREATE INDEX IF NOT EXISTS idx_tags_category ON tags(category);
 CREATE INDEX IF NOT EXISTS idx_assets_category ON assets(category);
-CREATE INDEX IF NOT EXISTS idx_investments_country ON investments(country);
-CREATE INDEX IF NOT EXISTS idx_investments_identifier ON investments(identifier);
+CREATE INDEX IF NOT EXISTS idx_comments_type ON comments(type);

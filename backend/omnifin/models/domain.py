@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any, Iterable, Literal, Optional, Self
 from uuid import UUID
 import sqlite3
@@ -723,10 +724,61 @@ class Report(Commentable):
         return summary
 
 
-from omnifin.models.categories import AssetType, Country, EntityType, EventType, FundType, FundEquityRatioType, SaleTerm, TagCategories
+from omnifin.models.categories import AssetTagOptions, AssetType, Country, EntityType, EventType, FundType, FundEquityRatioType, SaleTerm
 
 
-class Asset(Tagable):
+INVESTMENT_COMMENT_TYPES: dict[str, str] = {
+    "nyse_symbol": "nyse_ticker",
+    "ibkr_symbol": "ibkr_symbol",
+    "identifier": "identifier",
+    "country": "country",
+    "fund_type": "fund_type",
+    "fund_focus": "fund_focus",
+}
+
+SALE_COMMENT_TYPES: dict[str, str] = {
+    "acquisition_date": "acquisition_date",
+    "acquisition": "acquisition_transfer_id",
+    "cost_basis": "cost_basis",
+}
+
+SALE_TERM_TAG_CATEGORY = "sale_term"
+ACCOUNT_INSTITUTION_TAG_CATEGORY = "institution"
+TRANSFER_SETTLED_AT_COMMENT_TYPE = "settled_at"
+
+
+def _metadata_text(value: Any) -> str:
+    if isinstance(value, Enum):
+        return str(value.value)
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
+    if isinstance(value, UUID):
+        return str(value)
+    return str(value)
+
+
+def _parse_datetime_text(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _comment_value(comment: "Comment") -> str | None:
+    value = comment.content.strip()
+    return value or None
+
+
+def _first_by_type(comments: list["Comment"], comment_type: str) -> list["Comment"]:
+    return [comment for comment in comments if comment.type == comment_type]
+
+
+def _first_tags_by_category(tags: list["Tag"], category: str) -> list["Tag"]:
+    return [tag for tag in tags if tag.category == category]
+
+
+class Asset(Tagable, Commentable):
     """A fungible financial instrument or currency that can be held in an account."""
     symbol: str = Field(description="Canonical asset symbol used as primary key (e.g., USD, AAPL, VWCE).")
     name: Optional[str] = Field(default=None, description="Optional human-readable asset name.")
@@ -749,6 +801,89 @@ class Investment(Asset):
         description="Fund equity/real-estate exposure bucket for jurisdiction-specific tax treatment.",
     )
 
+    @classmethod
+    def db_get(cls, session: Any, key: Any) -> Optional["Investment"]:
+        row = session.execute("SELECT * FROM assets WHERE symbol = ?", (to_db_value(key),)).fetchone()
+        if row is None:
+            return None
+        investment = cls(_session=session, _from_db=True, **row)
+        investment._load_investment_metadata()
+        return investment if investment._has_investment_metadata() else None
+
+    @classmethod
+    def db_all(cls, session: Any, *, limit: int = 100, offset: int = 0) -> list["Investment"]:
+        placeholders = ", ".join("?" for _ in INVESTMENT_COMMENT_TYPES)
+        rows = session.execute(
+            f"""
+            SELECT DISTINCT a.*
+            FROM assets a
+            JOIN asset_comments ac ON ac.asset_symbol = a.symbol
+            JOIN comments c ON c.comment_id = ac.comment_id
+            WHERE c.type IN ({placeholders})
+            ORDER BY a.symbol
+            LIMIT ? OFFSET ?
+            """,
+            (*INVESTMENT_COMMENT_TYPES.values(), limit, offset),
+        ).fetchall()
+        investments = [cls(_session=session, _from_db=True, **row) for row in rows]
+        for investment in investments:
+            investment._load_investment_metadata()
+        return investments
+
+    @classmethod
+    def db_exists(cls, session: Any, key: Any) -> bool:
+        return cls.db_get(session, key) is not None
+
+    def _has_investment_metadata(self) -> bool:
+        return any(getattr(self, field_name, None) is not None for field_name in INVESTMENT_COMMENT_TYPES)
+
+    def _load_investment_metadata(self) -> None:
+        comment_map = {comment_type: _first_by_type(self.comments(), comment_type) for comment_type in INVESTMENT_COMMENT_TYPES.values()}
+        for field_name, comment_type in INVESTMENT_COMMENT_TYPES.items():
+            matches = comment_map.get(comment_type, [])
+            if not matches:
+                continue
+            raw_value = _comment_value(matches[0])
+            if raw_value is not None:
+                object.__setattr__(self, field_name, raw_value)
+
+    def _sync_investment_metadata(self) -> None:
+        existing_comments = self.comments()
+        for field_name, comment_type in INVESTMENT_COMMENT_TYPES.items():
+            desired_value = getattr(self, field_name, None)
+            desired_text = None if desired_value is None else _metadata_text(desired_value)
+            matches = _first_by_type(existing_comments, comment_type)
+            primary = matches[0] if matches else None
+            for extra in matches[1:]:
+                self.remove_comment(extra)
+            if desired_text is None:
+                if primary is not None:
+                    self.remove_comment(primary)
+                continue
+            if primary is None:
+                self.comment(Comment(_session=self._session, content=desired_text, type=comment_type, created_at=utcnow()))
+                continue
+            primary.content = desired_text
+            primary.type = comment_type
+
+    def _hydrate(self) -> bool:
+        hydrated = super()._hydrate()
+        if hydrated:
+            self._load_investment_metadata()
+        return hydrated
+
+    def staged_relation_objects(self) -> list["DomainModel"]:
+        self._sync_investment_metadata()
+        return super().staged_relation_objects()
+
+    def _relation_plan_records(self) -> list[RelationPlanRecord]:
+        self._sync_investment_metadata()
+        return super()._relation_plan_records()
+
+    def _flush_relations(self, cursor: sqlite3.Cursor) -> None:
+        self._sync_investment_metadata()
+        super()._flush_relations(cursor)
+
 
 class Account(Tagable, Commentable):
     """A financial account that can hold assets and record transactions."""
@@ -757,6 +892,48 @@ class Account(Tagable, Commentable):
     type: Optional[str] = None
     institution: Optional[str] = None
     recorded: Optional[Report] = None
+
+    def _hydrate(self) -> bool:
+        hydrated = super()._hydrate()
+        if hydrated:
+            self._load_institution_metadata()
+        return hydrated
+
+    def _load_institution_metadata(self) -> None:
+        institution_tags = _first_tags_by_category(self.tags(), ACCOUNT_INSTITUTION_TAG_CATEGORY)
+        if institution_tags:
+            object.__setattr__(self, "institution", institution_tags[0].name)
+
+    def _sync_institution_metadata(self) -> None:
+        existing_tags = self.tags()
+        institution_tags = _first_tags_by_category(existing_tags, ACCOUNT_INSTITUTION_TAG_CATEGORY)
+        primary_tag = institution_tags[0] if institution_tags else None
+        for extra in institution_tags[1:]:
+            self.remove_tags(extra)
+
+        if not self.institution:
+            if primary_tag is not None:
+                self.remove_tags(primary_tag)
+            return
+
+        if primary_tag is None:
+            self.add_tags(Tag(_session=self._session, name=self.institution, category=ACCOUNT_INSTITUTION_TAG_CATEGORY))
+            return
+
+        primary_tag.name = self.institution
+        primary_tag.category = ACCOUNT_INSTITUTION_TAG_CATEGORY
+
+    def staged_relation_objects(self) -> list["DomainModel"]:
+        self._sync_institution_metadata()
+        return super().staged_relation_objects()
+
+    def _relation_plan_records(self) -> list[RelationPlanRecord]:
+        self._sync_institution_metadata()
+        return super()._relation_plan_records()
+
+    def _flush_relations(self, cursor: sqlite3.Cursor) -> None:
+        self._sync_institution_metadata()
+        super()._flush_relations(cursor)
 
     def associated(self) -> list["Entity"]:
         return [obj for obj in self._merged_relation("entities") if isinstance(obj, Entity)]
@@ -818,48 +995,54 @@ class Transfer(Tagable, Commentable):
             **data,
         )
         if _from_db and self._session is not None:
-            self._load_transfer_times_row()
+            self._load_transfer_metadata()
 
     def _hydrate(self) -> bool:
         hydrated = super()._hydrate()
         if hydrated and self._session is not None:
-            self._load_transfer_times_row()
+            self._load_transfer_metadata()
         return hydrated
 
-    def _load_transfer_times_row(self) -> None:
-        if self._session is None:
+    def _load_transfer_metadata(self) -> None:
+        matches = _first_by_type(self.comments(), TRANSFER_SETTLED_AT_COMMENT_TYPE)
+        if not matches:
             return
-        row = self._session.execute(
-            "SELECT settled_at FROM transfer_times WHERE transfer_id = ?",
-            (self._db_pk_value(),),
-        ).fetchone()
-        if row is None:
+        raw_value = _comment_value(matches[0])
+        if raw_value is None:
             return
-        settled_at = row.get("settled_at")
-        if settled_at is not None and self.settled_at is None:
-            if isinstance(settled_at, str):
-                try:
-                    settled_at = datetime.fromisoformat(settled_at)
-                except ValueError:
-                    pass
-            object.__setattr__(self, "settled_at", settled_at)
+        object.__setattr__(self, "settled_at", _parse_datetime_text(raw_value))
+
+    def _sync_transfer_metadata(self) -> None:
+        existing_comments = self.comments()
+        matches = _first_by_type(existing_comments, TRANSFER_SETTLED_AT_COMMENT_TYPE)
+        primary = matches[0] if matches else None
+        for extra in matches[1:]:
+            self.remove_comment(extra)
+
+        if self.settled_at is None:
+            if primary is not None:
+                self.remove_comment(primary)
+            return
+
+        settled_text = _metadata_text(self.settled_at)
+        if primary is None:
+            self.comment(Comment(_session=self._session, content=settled_text, type=TRANSFER_SETTLED_AT_COMMENT_TYPE, created_at=utcnow()))
+            return
+
+        primary.content = settled_text
+        primary.type = TRANSFER_SETTLED_AT_COMMENT_TYPE
 
     def _flush_relations(self, cursor: sqlite3.Cursor) -> None:
+        self._sync_transfer_metadata()
         super()._flush_relations(cursor)
-        if self.settled_at is None:
-            cursor.execute(
-                "DELETE FROM transfer_times WHERE transfer_id = ?",
-                (self._db_pk_value(),),
-            )
-            return
-        cursor.execute(
-            """
-            INSERT INTO transfer_times (transfer_id, initiated_at, settled_at)
-            VALUES (?, NULL, ?)
-            ON CONFLICT(transfer_id) DO UPDATE SET settled_at = excluded.settled_at
-            """,
-            (self._db_pk_value(), to_db_value(self.settled_at)),
-        )
+
+    def staged_relation_objects(self) -> list["DomainModel"]:
+        self._sync_transfer_metadata()
+        return super().staged_relation_objects()
+
+    def _relation_plan_records(self) -> list[RelationPlanRecord]:
+        self._sync_transfer_metadata()
+        return super()._relation_plan_records()
 
     def events(self) -> list["Event"]:
         return [obj for obj in self._merged_relation("events") if isinstance(obj, Event)]
@@ -887,7 +1070,7 @@ class Location(DomainModel):
     category: Optional[Country | str] = None
 
 
-class Event(DomainModel):
+class Event(Tagable, Commentable):
     """A group of transfers or other financial activities that are logically related, such as a trade or conversion."""
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = Field(default=None, description="Human-readable event label such as 'sell', 'dividend', or 'wire transfer'.")
@@ -910,14 +1093,16 @@ class InvestmentSale(DomainModel):
         default_factory=uuid7,
         description="Sale identifier. Prefer sharing the same UUID as the corresponding Event.id for one-to-one linking.",
     )
-    acquisition_date: datetime = Field(
+    acquisition_date: Optional[datetime] = Field(
+        default=None,
         description="Acquisition date of the disposed lot. Must be timezone-aware and in ISO-8601 format when serialized.",
     )
     acquisition: Optional[Transfer] = Field(
         default=None,
         description="Optional transfer that originally acquired the lot being sold.",
     )
-    cost_basis: float = Field(
+    cost_basis: Optional[float] = Field(
+        default=None,
         ge=0,
         description="Tax basis amount allocated to this disposal lot in the same monetary unit as proceeds.",
     )
@@ -925,6 +1110,154 @@ class InvestmentSale(DomainModel):
         default=SaleTerm.UNKNOWN,
         description="Holding-period classification used by jurisdiction-specific tax rules.",
     )
+
+    @classmethod
+    def db_get(cls, session: Any, key: Any) -> Optional["InvestmentSale"]:
+        row = session.execute("SELECT * FROM events WHERE event_id = ?", (to_db_value(key),)).fetchone()
+        if row is None:
+            return None
+        sale = cls(_session=session, _from_db=True, id=row["event_id"])
+        sale._load_sale_metadata()
+        return sale if sale._has_sale_metadata() else None
+
+    @classmethod
+    def db_all(cls, session: Any, *, limit: int = 100, offset: int = 0) -> list["InvestmentSale"]:
+        placeholders = ", ".join("?" for _ in SALE_COMMENT_TYPES)
+        rows = session.execute(
+            f"""
+            SELECT DISTINCT e.event_id
+            FROM events e
+            LEFT JOIN event_comments ec ON ec.event_id = e.event_id
+            LEFT JOIN comments c ON c.comment_id = ec.comment_id
+            LEFT JOIN event_tags et ON et.event_id = e.event_id
+            LEFT JOIN tags t ON t.tag_id = et.tag_id
+            WHERE c.type IN ({placeholders}) OR t.category = ?
+            ORDER BY e.event_id
+            LIMIT ? OFFSET ?
+            """,
+            (*SALE_COMMENT_TYPES.values(), SALE_TERM_TAG_CATEGORY, limit, offset),
+        ).fetchall()
+        sales: list[InvestmentSale] = []
+        for row in rows:
+            sale = cls.db_get(session, row["event_id"])
+            if sale is not None:
+                sales.append(sale)
+        return sales
+
+    @classmethod
+    def db_exists(cls, session: Any, key: Any) -> bool:
+        return cls.db_get(session, key) is not None
+
+    def _has_sale_metadata(self) -> bool:
+        return any(getattr(self, field_name, None) is not None for field_name in SALE_COMMENT_TYPES) or self.term not in (None, SaleTerm.UNKNOWN, SaleTerm.UNKNOWN.value)
+
+    def _load_sale_metadata(self) -> None:
+        event = self._session.get(Event, self.id) if self._session is not None else None
+        if event is None:
+            return
+        for field_name, comment_type in SALE_COMMENT_TYPES.items():
+            matches = _first_by_type(event.comments(), comment_type)
+            if not matches:
+                continue
+            raw_value = _comment_value(matches[0])
+            if raw_value is None:
+                continue
+            if field_name == "acquisition_date":
+                object.__setattr__(self, field_name, _parse_datetime_text(raw_value))
+            elif field_name == "cost_basis":
+                object.__setattr__(self, field_name, float(raw_value))
+            elif field_name == "acquisition":
+                object.__setattr__(self, field_name, Transfer(id=parse_uuid(raw_value), _session=self._session))
+        term_tags = _first_tags_by_category(event.tags(), SALE_TERM_TAG_CATEGORY)
+        if term_tags:
+            object.__setattr__(self, "term", term_tags[0].name)
+
+    def to_sql_dict(self, *, report: "Report | None" = None, exists: bool = False) -> dict[str, Any]:
+        return {"event_id": to_db_value(self.id), "type": EventType.TRADE.value}
+
+    def _existing_row(self) -> dict[str, Any] | None:
+        if self._session is None:
+            return None
+        return self._session.execute(
+            "SELECT * FROM events WHERE event_id = ?",
+            (self._db_pk_value(),),
+        ).fetchone()
+
+    def _hydrate(self) -> bool:
+        if self._session is None or self._loaded or self._hydrating:
+            return self._loaded
+        self._hydrating = True
+        try:
+            row = self._existing_row()
+            if row is None:
+                self._loaded = True
+                return False
+            self._load_sale_metadata()
+            self._loaded = True
+            return True
+        finally:
+            self._hydrating = False
+
+    def _sync_sale_metadata(self) -> None:
+        if self._session is None:
+            return
+        event = self._session.get(Event, self.id)
+        if event is None:
+            event = Event(_session=self._session, id=self.id, type=EventType.TRADE.value)
+        elif event.type is None:
+            event.type = EventType.TRADE.value
+
+        existing_comments = event.comments()
+        for field_name, comment_type in SALE_COMMENT_TYPES.items():
+            desired_value = getattr(self, field_name, None)
+            desired_text = None if desired_value is None else _metadata_text(desired_value._pk_value() if isinstance(desired_value, DomainModel) else desired_value)
+            matches = _first_by_type(existing_comments, comment_type)
+            primary = matches[0] if matches else None
+            for extra in matches[1:]:
+                event.remove_comment(extra)
+            if desired_text is None:
+                if primary is not None:
+                    event.remove_comment(primary)
+                continue
+            if primary is None:
+                event.comment(Comment(_session=self._session, content=desired_text, type=comment_type, created_at=utcnow()))
+                continue
+            primary.content = desired_text
+            primary.type = comment_type
+
+        desired_term = None if self.term is None else _metadata_text(self.term)
+        term_tags = _first_tags_by_category(event.tags(), SALE_TERM_TAG_CATEGORY)
+        primary_tag = term_tags[0] if term_tags else None
+        for extra in term_tags[1:]:
+            event.remove_tags(extra)
+        if desired_term is None:
+            if primary_tag is not None:
+                event.remove_tags(primary_tag)
+        elif primary_tag is None:
+            event.add_tags(Tag(_session=self._session, name=desired_term, category=SALE_TERM_TAG_CATEGORY))
+        else:
+            primary_tag.name = desired_term
+            primary_tag.category = SALE_TERM_TAG_CATEGORY
+
+    def _relation_plan_records(self) -> list[RelationPlanRecord]:
+        self._sync_sale_metadata()
+        return super()._relation_plan_records()
+
+    def _flush_relations(self, cursor: sqlite3.Cursor) -> None:
+        self._sync_sale_metadata()
+        event = self._session.get(Event, self.id) if self._session is not None else None
+        if event is not None:
+            event._flush_relations(cursor)
+
+    def staged_relation_objects(self) -> list["DomainModel"]:
+        self._sync_sale_metadata()
+        objects = super().staged_relation_objects()
+        if self._session is None:
+            return objects
+        event = self._session.get(Event, self.id)
+        if event is None:
+            return objects
+        return [event, *event.staged_relation_objects(), *objects]
 
 
 class Entity(DomainModel):
@@ -951,6 +1284,7 @@ class Comment(DomainModel):
     id: UUID = Field(default_factory=uuid7)
     created_at: datetime = Field(default_factory=utcnow)
     content: str = None
+    type: Optional[str] = None
     recorded: Optional[Report] = None
 
 

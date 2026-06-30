@@ -66,6 +66,10 @@ class DatabaseSession:
 
         from omnifin.models.domain import DomainModel
 
+        custom_get = getattr(model_cls, "db_get", None)
+        if callable(custom_get):
+            return custom_get(self, key)
+
         spec = MODEL_SPECS[model_cls.__name__]
         normalized_key = normalize_identity_value(key)
         if model_cls in self.identity_map and normalized_key in self.identity_map[model_cls]:
@@ -83,6 +87,9 @@ class DatabaseSession:
         return model_cls(_session=self, _from_db=True, **row)  # type: ignore[call-arg]
 
     def exists(self, model_cls: type, key: Any) -> bool:
+        custom_exists = getattr(model_cls, "db_exists", None)
+        if callable(custom_exists):
+            return bool(custom_exists(self, key))
         spec = MODEL_SPECS[model_cls.__name__]
         cursor = self.execute(
             f"SELECT 1 FROM {spec.table} WHERE {spec.pk} = ?", (to_db_value(key),)
@@ -90,6 +97,9 @@ class DatabaseSession:
         return cursor.fetchone() is not None
 
     def find_by_unique(self, model_cls: type[T], column: str, value: Any) -> T | None:
+        custom_find = getattr(model_cls, "db_find_by_unique", None)
+        if callable(custom_find):
+            return custom_find(self, column, value)
         spec = MODEL_SPECS[model_cls.__name__]
         cursor = self.execute(
             f"SELECT * FROM {spec.table} WHERE {column} = ? LIMIT 1", (to_db_value(value),)
@@ -100,6 +110,9 @@ class DatabaseSession:
         return model_cls(_session=self, _from_db=True, **row)  # type: ignore[call-arg]
 
     def all(self, model_cls: type[T], *, limit: int = 100, offset: int = 0) -> list[T]:
+        custom_all = getattr(model_cls, "db_all", None)
+        if callable(custom_all):
+            return custom_all(self, limit=limit, offset=offset)
         spec = MODEL_SPECS[model_cls.__name__]
         cursor = self.execute(
             f"SELECT * FROM {spec.table} ORDER BY {spec.pk} LIMIT ? OFFSET ?", (limit, offset)
