@@ -6,7 +6,7 @@ from .misc import get_path, load_db, load_item_file
 from .building import init_db
 from .parsers import Parser
 from .datacls import Record, Asset, Account, Report, Tag, Transaction, Tagged, Linkable, Reportable, Verification
-
+from .writing import create_report
 
 @fig.component('sqlite')
 def form_connection(cfg: fig.Configuration):
@@ -27,21 +27,6 @@ def form_connection(cfg: fig.Configuration):
 
 	return conn
 
-
-
-def create_report(cfg: fig.Configuration, desc: str = None) -> Report:
-	script_name = None
-	if desc is None:
-		script_name = cfg.pull('_meta.script_name', None, silent=True)
-		if script_name is not None:
-			desc = f'created for {script_name!r} script'
-
-	report = Report(category=cfg.pull('category', script_name or 'default'),
-					# account=cfg.pull('account', None),
-					description=cfg.pull('description', None) if desc is None else desc)
-
-	# cfg.print(f'Using report: {report}.')
-	return report
 
 
 
