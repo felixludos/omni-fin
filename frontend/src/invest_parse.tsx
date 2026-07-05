@@ -570,9 +570,6 @@ export default function InvestParsePanel() {
               <button type="button" onClick={() => void postJobAction('rerun-all')}>
                 Rerun All
               </button>
-              <button type="button" onClick={() => void rerunSelectedRows()}>
-                Rerun Selected
-              </button>
               <div className="column-selector">
                 <label htmlFor="group-column">Group by:</label>
                 <select
@@ -737,7 +734,7 @@ export default function InvestParsePanel() {
                         void rerunSingleRow(selectedRow.index)
                       }
                     }}>
-                      Rerun This Row
+                      Run This Row
                     </button>
                   </>
                 ) : (

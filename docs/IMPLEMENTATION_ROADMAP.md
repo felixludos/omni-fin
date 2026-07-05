@@ -371,6 +371,10 @@ Other than that the rows should be processed similarly to the existing ingestion
 Currently, since each row is being processed independently, if the same new stock gets sold repeatedly, then the AI has to repeatedly parse the same information - which is very inefficient. To improve this, add a "pre-processing" step using the AI where the column names of the uploaded CSV file are analyzed to identify which columns can likely be used to uniquely identify the investment involved in each row. The rows that are merged should be visible to the user, and most importantly when the AI is called on one group, the results should be shown for all the rows in that group, so that the user can see all the rows that were merged and the AI output for each of them. This should be done in a way that is transparent to the user, so that they can see which rows were merged and what the AI output was for each of them. 
 ```
 
+```
+Add an option for the LLM processing to say "no new investment" for example for a row that is a dividend or interest payment, also add an option that is "attached to previous" for oddly formatted CSV rows where a subsequent row should actually be attached to the previous row (for example, a wash sale row that is attached to a previous sale row). These rows should be merged in a transparent way so that the user knows which rows were merged and what the AI output was for each of them. The user should also be able to edit the AI output for each row, and the changes should be reflected in the merged rows as well.
+```
+
 ---
 
 ### 2.1 Implement identity map correctly

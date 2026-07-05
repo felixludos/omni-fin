@@ -15,6 +15,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from omnifin.ai.structured import structured_completion
 from omnifin.core.db import DatabaseSession
 from omnifin.core.ids import stable_hash_bytes, utcnow
 from omnifin.models import Asset, Investment, Report, Tag, Comment
