@@ -82,6 +82,12 @@ type DbFileInfo = {
   size_bytes: number
 }
 
+type ModelInfo = {
+  name: string
+  size: number
+  digest: string
+}
+
 const SAMPLE_OBJECTS: ProposedObjectType[] = [
   'transfer',
   'statement',
@@ -156,6 +162,8 @@ function App() {
   const [seedWithData, setSeedWithData] = useState(true)
   const [debugMode, setDebugMode] = useState<boolean>(false)
   const [activeView, setActiveView] = useState<'ingestion' | 'tuning' | 'invest-parse'>('ingestion')
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b')
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) {
@@ -227,6 +235,16 @@ function App() {
         }
       })
       .catch(() => {})
+
+    fetch('/api/models')
+      .then((r) => r.json())
+      .then((data: ModelInfo[]) => {
+        setAvailableModels(data)
+        if (data.length > 0) {
+          setSelectedModel(data[0].name)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -267,7 +285,11 @@ function App() {
     setCommitResult(null)
     try {
       const csvText = await file.text()
-      let body: Record<string, string> = { filename: file.name, csv_text: csvText }
+      let body: Record<string, unknown> = {
+        filename: file.name,
+        csv_text: csvText,
+        model: selectedModel,
+      }
       if (selectedAccountId) {
         body.account_id = selectedAccountId
       }
@@ -668,6 +690,22 @@ function App() {
         <>
           <header className="topbar">
             <div>
+              {availableModels.length > 0 && (
+                <div className="account-selector">
+                  <label htmlFor="model-select">Model:</label>
+                  <select
+                    id="model-select"
+                    value={selectedModel}
+                    onChange={(event) => setSelectedModel(event.currentTarget.value)}
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model.name} value={model.name}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {accounts.length > 0 && (
                 <div className="account-selector">
                   <label htmlFor="source-account">Source Account:</label>

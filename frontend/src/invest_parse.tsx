@@ -71,6 +71,12 @@ type AccountInfo = {
   institution?: string | null
 }
 
+type ModelInfo = {
+  name: string
+  size: number
+  digest: string
+}
+
 function toJsonSafe(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
@@ -94,6 +100,8 @@ export default function InvestParsePanel() {
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [commitResult, setCommitResult] = useState<CommitResponse | null>(null)
   const [existingSymbols, setExistingSymbols] = useState<string[]>([])
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b')
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) return null
@@ -140,6 +148,18 @@ export default function InvestParsePanel() {
   }, [])
 
   useEffect(() => {
+    fetch('/api/models')
+      .then((r) => r.json())
+      .then((data: ModelInfo[]) => {
+        setAvailableModels(data)
+        if (data.length > 0) {
+          setSelectedModel(data[0].name)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     if (!dbReady || !job) return
     const timer = window.setInterval(() => {
       fetch(`/api/invest-parse/jobs/${job.id}`)
@@ -173,7 +193,7 @@ export default function InvestParsePanel() {
         filename: file.name,
         csv_text: csvText,
         temperature: 0.6,
-        model: 'gemma4:31b',
+        model: selectedModel,
         base_url: 'http://localhost:11434/v1'
       }
       if (selectedAccountId) {
@@ -398,6 +418,22 @@ export default function InvestParsePanel() {
         <>
           <header className="topbar">
             <div>
+              {availableModels.length > 0 && (
+                <div className="account-selector">
+                  <label htmlFor="model-select">Model:</label>
+                  <select
+                    id="model-select"
+                    value={selectedModel}
+                    onChange={(event) => setSelectedModel(event.currentTarget.value)}
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model.name} value={model.name}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {accounts.length > 0 && (
                 <div className="account-selector">
                   <label htmlFor="source-account">Source Account:</label>

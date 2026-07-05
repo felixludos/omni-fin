@@ -80,12 +80,18 @@ class IngestJob(BaseModel):
     status: Literal["running", "paused", "completed", "error"] = "running"
     rows: list[RowState]
     account_id: Optional[str] = None
+    model: str = "gemma4:31b"
+    base_url: str = "http://localhost:11434/v1"
+    temperature: float = 0.0
 
 
 class CreateJobRequest(BaseModel):
     filename: str
     csv_text: str
     account_id: Optional[str] = None
+    model: str = "gemma4:31b"
+    base_url: str = "http://localhost:11434/v1"
+    temperature: float = 0.0
 
 
 class LoadExampleRequest(BaseModel):
@@ -199,6 +205,9 @@ class IngestionJobManager:
             headers=list(reader.fieldnames),
             rows=rows,
             account_id=payload.account_id or None,
+            model=payload.model,
+            base_url=payload.base_url,
+            temperature=payload.temperature,
         )
 
         async with self._lock:
@@ -457,19 +466,15 @@ async def _interpret_row_with_llm(job: IngestJob, row: RowState) -> tuple[RowInt
         source_account=source_account_info,
     )
 
-    model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "gemma4:31b")
-    model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "ornith:35b")
-    base_url = os.environ.get("OMNIFIN_OLLAMA_BASE_URL", "http://localhost:11434/v1")
-
     try:
         interpreted = await asyncio.to_thread(
             structured_completion,
             prompt,
             LlmRowResponse,
-            model=model,
-            base_url=base_url,
+            model=job.model,
+            base_url=job.base_url,
             api_key="ollama",
-            temperature=0.0,
+            temperature=job.temperature,
             max_tokens=5000,
             timeout=90.0,
         )

@@ -85,10 +85,9 @@ class ModelInfo(BaseModel):
 def list_models() -> list[ModelInfo]:
     base_url = os.environ.get("OMNIFIN_OLLAMA_BASE_URL", "http://localhost:11434")
     try:
-        with httpx.Client(timeout=5.0) as client:
-            response = client.get(f"{base_url}/api/tags")
-            response.raise_for_status()
-            data = response.json()
+        req = urllib.request.Request(f"{base_url}/api/tags")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
             models = []
             for model in data.get("models", []):
                 models.append(
