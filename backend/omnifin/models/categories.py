@@ -61,12 +61,6 @@ class AssetType(str, Enum):
 	FIAT = "fiat"
 	"""Fiat currencies such as USD, EUR, GBP, JPY, etc."""
 
-	CURRENCY = "currency"
-	"""Alias category for currency-like values where the source already uses this token."""
-
-	EQUITY = "equity"
-	"""Broad equity category used by broker exports and normalized DB rows."""
-
 	STOCK = "stock"
 	"""Direct shares in individual corporations (e.g., Apple, Microsoft, Amazon)."""
 
@@ -75,12 +69,6 @@ class AssetType(str, Enum):
 
 	CRYPTO = "crypto"
 	"""Cryptocurrencies such as Bitcoin, Ethereum, and other digital assets."""
-
-	ETF = "etf"
-	"""Exchange-traded funds."""
-
-	MUTUAL_FUND = "mutual_fund"
-	"""Mutual funds."""
 
 	FUND = "fund"
 	"""Investment funds, including mutual funds, ETFs, and index funds."""
