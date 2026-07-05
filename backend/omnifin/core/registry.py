@@ -95,7 +95,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
             "id": "location_id",
             "city": "city",
             "state": "state",
-            "category": "category",
+            "category": "country",
         },
         dependency_order=2,
         required=("category",),
@@ -120,6 +120,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
             "id": "account_id",
             "name": "name",
             "type": "type",
+            # subtype handled via tags (category: "account_subtype")
             "recorded": "report_id",
         },
         dependency_order=3,
@@ -232,6 +233,7 @@ RELATION_SPECS: dict[str, dict[str, tuple[str, str, str, str]]] = {
     },
     "Report": {
         "comments": ("report_comments", "report_id", "Comment", "comment_id"),
+        "tags": ("report_tags", "report_id", "Tag", "tag_id"),
     },
     "Event": {
         "tags": ("event_tags", "event_id", "Tag", "tag_id"),
@@ -243,4 +245,11 @@ NATURAL_KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "Asset": ("symbol",),
     "Investment": ("symbol",),
     "Tag": ("name",),
+    "Entity": ("name",),
+}
+
+# Unique natural-key fields that enforce uniqueness at the database level.
+UNIQUE_KEY_COLUMNS: dict[str, str] = {
+    "Entity": "name",
+    "Event": "name",
 }

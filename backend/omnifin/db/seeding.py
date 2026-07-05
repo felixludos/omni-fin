@@ -46,7 +46,7 @@ class SeedDataLoader:
                               institution=item.get("institution"))
             accounts.append(account)
             for tag in item.get("tags", []):
-                account.add_tag(Tag(name=tag))
+                account.add_tags(Tag(name=tag))
         return accounts
 
     def load_assets(self) -> list[Asset]:
@@ -60,8 +60,8 @@ class SeedDataLoader:
                           category=item.get("category"))
             assets.append(asset)
             for tag in item.get("tags", []):
-                asset.add_tag(Tag(name=tag))
-        investment_data = data.get("investments", [])
+                asset.add_tags(Tag(name=tag))
+            investment_data = data.get("investments", [])
         for item in investment_data:
             investment = Investment(symbol=item["symbol"], 
                                     name=item.get("name"), 
@@ -74,7 +74,7 @@ class SeedDataLoader:
                                     fund_focus=item.get("fund_focus"))
             assets.append(investment)
             for tag in item.get("tags", []):
-                investment.add_tag(Tag(name=tag))
+                investment.add_tags(Tag(name=tag))
         return assets
 
     def _load_yaml(self, filename: str) -> dict[str, Any]:
