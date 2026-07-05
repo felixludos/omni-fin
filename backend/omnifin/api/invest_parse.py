@@ -222,20 +222,16 @@ class InvestParseJobManager:
             # Build prompt for grouping analysis
             prompt = self._build_grouping_prompt(job)
             
-            # Call AI to analyze and group rows
-            model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "gemma4:31b")
-            model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "ornith:35b")
-            base_url = os.environ.get("OMNIFIN_OLLAMA_BASE_URL", "http://localhost:11434/v1")
-            
+            # Call AI to analyze and group rows — use the job's stored model, base_url, and temperature
             try:
                 group_response = await asyncio.to_thread(
                     structured_completion,
                     prompt,
                     GroupRowsResponse,
-                    model=model,
-                    base_url=base_url,
+                    model=job.model,
+                    base_url=job.base_url,
                     api_key="ollama",
-                    temperature=0.0,
+                    temperature=job.temperature,
                     max_tokens=8000,
                     timeout=120.0,
                 )
