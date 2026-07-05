@@ -52,6 +52,15 @@ type InvestParseJob = {
   temperature: number
   model: string
   base_url: string
+  investment_groups?: InvestmentGroup[]
+}
+
+type InvestmentGroup = {
+  group_id: string
+  row_indices: number[]
+  investment?: InvestmentData | null
+  summary: string
+  confidence: number
 }
 
 type CommitResponse = {
@@ -104,6 +113,7 @@ export default function InvestParsePanel() {
   const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b')
   const [temperature, setTemperature] = useState<number>(0.6)
   const [batchProcessing, setBatchProcessing] = useState<boolean>(true)
+  const [groupingStatus, setGroupingStatus] = useState<'idle' | 'grouping'>('idle')
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) return null
@@ -240,6 +250,27 @@ export default function InvestParsePanel() {
       setStatusMessage(`Debug: loaded "${data.filename}" with ${data.rows.length} rows (paused)`)
     } catch (error) {
       setErrorMessage(String(error))
+    }
+  }
+
+  const groupRows = async (): Promise<void> => {
+    if (!job) return
+    setGroupingStatus('grouping')
+    setErrorMessage('')
+    try {
+      const response = await fetch(`/api/invest-parse/jobs/${job.id}/group-rows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_by: 'investment' })
+      })
+      if (!response.ok) throw new Error(await response.text())
+      const data = (await response.json()) as InvestParseJob
+      setJob(data)
+      setStatusMessage(`Grouped ${data.investment_groups?.length ?? 0} investment groups`)
+    } catch (error) {
+      setErrorMessage(String(error))
+    } finally {
+      setGroupingStatus('idle')
     }
   }
 
@@ -541,6 +572,9 @@ export default function InvestParsePanel() {
               <button type="button" onClick={() => void rerunSelectedRows()}>
                 Rerun Selected
               </button>
+              <button type="button" onClick={() => void groupRows()} disabled={groupingStatus === 'grouping'}>
+                {groupingStatus === 'grouping' ? 'Grouping...' : 'Group Rows'}
+              </button>
               <button type="button" onClick={() => void toggleSelectAll(true)}>
                 Select All
               </button>
@@ -561,48 +595,109 @@ export default function InvestParsePanel() {
 
           {job && (
             <section className="workspace-grid">
-              <article className="row-list">
-                <h2>Rows</h2>
-                <div className="row-table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Use</th>
-                        <th>Row</th>
-                        <th>Status</th>
-                        <th>Summary</th>
-                        <th>Confidence</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {job.rows.map((row) => (
-                        <tr
-                          key={row.index}
-                          className={row.index === selectedRowIndex ? 'selected-row' : ''}
-                          onClick={() => setSelectedRowIndex(row.index)}
-                        >
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={row.selected}
-                              onChange={(event) => {
-                                event.stopPropagation()
-                                void toggleRowSelection(row.index, event.currentTarget.checked)
-                              }}
-                            />
-                          </td>
-                          <td>{row.index}</td>
-                          <td>
-                            <span className={`status-pill ${row.status}`}>{row.status}</span>
-                          </td>
-                          <td>{row.error || row.llm_error || row.interpretation?.summary || ''}</td>
-                          <td>{row.interpretation?.confidence?.toFixed(2) || ''}</td>
+              {job.investment_groups && job.investment_groups.length > 0 ? (
+                <article className="row-list">
+                  <h2>Investment Groups</h2>
+                  <div className="row-table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Group</th>
+                          <th>Rows</th>
+                          <th>Investment</th>
+                          <th>Status</th>
+                          <th>Confidence</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </article>
+                      </thead>
+                      <tbody>
+                        {job.investment_groups.map((group) => {
+                          const groupRows = group.row_indices
+                            .map(idx => job.rows.find(r => r.index === idx))
+                            .filter((r): r is ParseRow => r !== undefined)
+                          const hasProcessed = groupRows.some(r => r.status === 'processed')
+                          const firstRow = groupRows[0]
+                          const groupInvestment = group.investment || firstRow?.interpretation?.result?.investment
+                          
+                          return (
+                            <tr
+                              key={group.group_id}
+                              className={selectedRowIndex && group.row_indices.includes(selectedRowIndex) ? 'selected-row' : ''}
+                              onClick={() => {
+                                if (groupRows.length > 0) setSelectedRowIndex(groupRows[0].index)
+                              }}
+                            >
+                              <td>
+                                <span className="status-pill">Group</span>
+                              </td>
+                              <td>
+                                {groupRows.map(r => (
+                                  <span key={r.index} className={`status-pill ${r.status}`}>{r.index}</span>
+                                ))}
+                              </td>
+                              <td>
+                                {groupInvestment ? (
+                                  groupInvestment.symbol || 'New'
+                                ) : (
+                                  <span className="muted">Not yet processed</span>
+                                )}
+                              </td>
+                              <td>
+                                {hasProcessed ? 'Processed' : 'Pending'}
+                              </td>
+                              <td>
+                                {group.confidence.toFixed(2)}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              ) : (
+                <article className="row-list">
+                  <h2>Rows</h2>
+                  <div className="row-table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Use</th>
+                          <th>Row</th>
+                          <th>Status</th>
+                          <th>Summary</th>
+                          <th>Confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {job.rows.map((row) => (
+                          <tr
+                            key={row.index}
+                            className={row.index === selectedRowIndex ? 'selected-row' : ''}
+                            onClick={() => setSelectedRowIndex(row.index)}
+                          >
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={row.selected}
+                                onChange={(event) => {
+                                  event.stopPropagation()
+                                  void toggleRowSelection(row.index, event.currentTarget.checked)
+                                }}
+                              />
+                            </td>
+                            <td>{row.index}</td>
+                            <td>
+                              <span className={`status-pill ${row.status}`}>{row.status}</span>
+                            </td>
+                            <td>{row.error || row.llm_error || row.interpretation?.summary || ''}</td>
+                            <td>{row.interpretation?.confidence?.toFixed(2) || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              )}
 
               <article className="row-editor">
                 <h2>Input Row</h2>

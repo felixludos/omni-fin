@@ -31,6 +31,15 @@ def _db_path() -> str:
     return server_db_path()
 
 
+class InvestmentGroup(BaseModel):
+    """Group of rows representing the same investment."""
+    group_id: str
+    row_indices: list[int] = Field(default_factory=list)
+    investment: dict[str, Any] | None = None
+    summary: str = ""
+    confidence: float = 0.0
+
+
 class InvestmentParseResult(BaseModel):
     """Result of parsing a single row - either existing symbol or new investment."""
     status: Literal["known", "new"]
@@ -71,6 +80,8 @@ class InvestParseJob(BaseModel):
     temperature: float = 0.6
     model: str = "gemma4:31b"
     base_url: str = "http://localhost:11434/v1"
+    investment_groups: list[InvestmentGroup] = Field(default_factory=list)
+    group_rows: bool = False
 
 
 class CreateJobRequest(BaseModel):
@@ -83,6 +94,10 @@ class CreateJobRequest(BaseModel):
 
 class LoadExampleRequest(BaseModel):
     filename: str
+
+
+class GroupRowsRequest(BaseModel):
+    group_by: str = "investment"
 
 
 class UpdateRowRequest(BaseModel):
@@ -115,6 +130,16 @@ class LlmRowResponse(BaseModel):
     summary: str = ""
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     result: InvestmentParseResult | None = None
+
+
+class GroupRow(BaseModel):
+    row_indices: list[int]
+    summary: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class GroupRowsResponse(BaseModel):
+    groups: list[GroupRow] = Field(default_factory=list)
 
 
 def _load_existing_symbols() -> list[str]:
@@ -189,6 +214,52 @@ class InvestParseJobManager:
             job.updated_at = utcnow()
 
         return job
+
+    async def group_rows(self, job_id: str, group_by: str = "investment") -> InvestParseJob:
+        async with self._lock:
+            job = self._require_job_locked(job_id)
+            
+            # Build prompt for grouping analysis
+            prompt = self._build_grouping_prompt(job)
+            
+            # Call AI to analyze and group rows
+            model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "gemma4:31b")
+            model = os.environ.get("OMNIFIN_OLLAMA_MODEL", "ornith:35b")
+            base_url = os.environ.get("OMNIFIN_OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            
+            try:
+                group_response = await asyncio.to_thread(
+                    structured_completion,
+                    prompt,
+                    GroupRowsResponse,
+                    model=model,
+                    base_url=base_url,
+                    api_key="ollama",
+                    temperature=0.0,
+                    max_tokens=8000,
+                    timeout=120.0,
+                )
+                
+                # Create InvestmentGroup objects from AI response
+                groups = []
+                for g in group_response.groups:
+                    groups.append(InvestmentGroup(
+                        group_id=f"group_{stable_hash_bytes(str(g['row_indices']).encode()).hex()[:8]}",
+                        row_indices=g["row_indices"],
+                        investment=None,
+                        summary=g.get("summary", ""),
+                        confidence=g.get("confidence", 0.0),
+                    ))
+                
+                job.investment_groups = groups
+                job.group_rows = True
+                job.updated_at = utcnow()
+                
+            except Exception as exc:
+                # If grouping fails, return job as-is
+                pass
+            
+            return job
 
     async def get_job(self, job_id: str) -> InvestParseJob:
         async with self._lock:
@@ -326,6 +397,30 @@ class InvestParseJobManager:
                 if job.paused:
                     job.status = "paused"
                     next_row = None
+                elif job.investment_groups:
+                    # Process by groups - find first pending group
+                    pending_group = None
+                    for group in job.investment_groups:
+                        group_rows = [r for r in job.rows if r.index in group.row_indices]
+                        if any(r.status == "pending" for r in group_rows):
+                            pending_group = group
+                            break
+                    
+                    if pending_group is None:
+                        # Check if any rows have errors
+                        if any(row.status == "error" for row in job.rows):
+                            job.status = "error"
+                        else:
+                            job.status = "completed"
+                        job.updated_at = utcnow()
+                        self._tasks.pop(job_id, None)
+                        return
+                    
+                    next_row = next(r for r in job.rows if r.index == pending_group.row_indices[0])
+                    next_row.status = "processing"
+                    next_row.updated_at = utcnow()
+                    job.status = "running"
+                    job.updated_at = utcnow()
                 else:
                     pending = [row for row in job.rows if row.status == "pending"]
                     if not pending:
@@ -359,6 +454,26 @@ class InvestParseJobManager:
                     current_row.error = None
                     current_row.llm_error = llm_error
                     current_row.updated_at = utcnow()
+                    
+                    # If job has groups, apply interpretation to all rows in the group
+                    if current_job.investment_groups:
+                        for group in current_job.investment_groups:
+                            if next_row.index in group.row_indices:
+                                if interpretation.result:
+                                    group.investment = interpretation.result.investment
+                                else:
+                                    group.investment = None
+                                group.summary = interpretation.summary
+                                group.confidence = interpretation.confidence
+                                # Apply to all rows in the group
+                                for row in current_job.rows:
+                                    if row.index in group.row_indices and row.status != "processed":
+                                        row.interpretation = interpretation
+                                        row.status = "processed"
+                                        row.error = None
+                                        row.llm_error = None
+                                        row.updated_at = utcnow()
+                    
                     current_job.updated_at = utcnow()
             except Exception as exc:
                 async with self._lock:
@@ -462,6 +577,44 @@ def _build_prompt(
     for key, value in replacements.items():
         rendered = rendered.replace(f"{{{{{key}}}}}", value)
     return rendered
+
+
+def _build_grouping_prompt(job: InvestParseJob) -> str:
+    """Build prompt for grouping rows by investment identity."""
+    rows_json = []
+    for row in job.rows:
+        rows_json.append({
+            "index": row.index,
+            "row": row.source_row,
+            "symbol_col": next((k for k in row.source_row if "symbol" in k.lower() or "ticker" in k.lower() or "security" in k.lower()), None),
+            "symbol_val": next((v for k, v in row.source_row.items() if "symbol" in k.lower() or "ticker" in k.lower() or "security" in k.lower()), ""),
+        })
+    
+    prompt = f"""You are an investment grouping expert for Omnifin.
+
+Analyze the rows below and group them by the investment they represent. Rows with the same investment (same ticker, same security) should be grouped together.
+
+## Headers
+{json.dumps(job.headers, ensure_ascii=False)}
+
+## Rows to Group
+{json.dumps(rows_json, ensure_ascii=False, indent=2)}
+
+## Instructions
+1. Analyze each row to identify the investment it represents
+2. Group rows that share the same investment (same symbol/ticker/security)
+3. For each group, provide:
+   - row_indices: List of row numbers in this group
+   - summary: Brief description of the investment
+   - confidence: 0.0-1.0 confidence in the grouping
+
+## Output Requirements
+Return only valid JSON matching this schema:
+{{"groups": [{{"row_indices": [1, 2, 3], "summary": "string", "confidence": 0.0-1.0}}, ...]}}
+
+Do not include markdown fences or explanatory prose."""
+    
+    return prompt
 
 
 def _default_prompt_template() -> str:
@@ -628,3 +781,8 @@ async def update_invest_parse_row(job_id: str, row_index: int, payload: UpdateRo
 @router.post("/jobs/{job_id}/commit", response_model=CommitResponse)
 async def commit_invest_parse_job(job_id: str, payload: CommitJobRequest) -> CommitResponse:
     return await manager.commit(job_id, payload)
+
+
+@router.post("/jobs/{job_id}/group-rows", response_model=InvestParseJob)
+async def group_invest_parse_rows(job_id: str, payload: GroupRowsRequest) -> InvestParseJob:
+    return await manager.group_rows(job_id, payload.group_by)
