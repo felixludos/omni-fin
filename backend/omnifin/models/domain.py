@@ -972,24 +972,6 @@ class Account(Tagable, Commentable):
         self._sync_institution_metadata()
         super()._flush_relations(cursor)
 
-    def associated(self) -> list["Entity"]:
-        return [obj for obj in self._merged_relation("entities") if isinstance(obj, Entity)]
-
-    def add_entities(self, *entities: "Entity | str | dict[str, Any]") -> None:
-        for item in entities:
-            if isinstance(item, Entity):
-                entity = item
-            elif isinstance(item, dict):
-                entity = Entity(_session=self._session, **item)
-            else:
-                entity = Entity(_session=self._session, name=item)
-            self._stage_add("entities", entity)
-
-    def remove_entities(self, *entities: "Entity") -> None:
-        for entity in entities:
-            self._stage_remove("entities", entity)
-
-
 class Statement(Tagable, Commentable):
     """A financial statement that reports account balance of a specific asset at a specific date."""
     id: UUID = Field(default_factory=uuid7)
@@ -1297,13 +1279,6 @@ class InvestmentSale(DomainModel):
         return [event, *event.staged_relation_objects(), *objects]
 
 
-class Entity(DomainModel):
-    """A legal or organizational entity that can hold assets or engage in financial transactions."""
-    id: UUID = Field(default_factory=uuid7)
-    name: Optional[str] = None
-    legal_type: Optional[EntityType | str] = None
-
-
 class Tag(DomainModel):
     """A label or category that can be applied to financial records for organization or reporting purposes."""
     id: UUID = Field(default_factory=uuid7, description="Unique tag identifier.")
@@ -1326,7 +1301,7 @@ class Comment(DomainModel):
 
 
 # Resolve forward references for Pydantic.
-for _model in [Report, Asset, Investment, Account, Statement, Transfer, Location, Event, InvestmentSale, Entity, Tag, Comment]:
+for _model in [Report, Asset, Investment, Account, Statement, Transfer, Location, Event, InvestmentSale, Tag, Comment]:
     _model.model_rebuild()
 
 

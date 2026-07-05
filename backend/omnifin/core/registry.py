@@ -100,18 +100,6 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         dependency_order=2,
         required=("category",),
     ),
-    "Entity": ModelSpec(
-        table="entities",
-        pk="entity_id",
-        identity_field="id",
-        fields={
-            "id": "entity_id",
-            "name": "name",
-            "legal_type": "legal_type",
-        },
-        dependency_order=2,
-        required=("name",),
-    ),
     "Account": ModelSpec(
         table="accounts",
         pk="account_id",
@@ -199,7 +187,6 @@ COERCION_KEYS: dict[str, str] = {
     "Tag": "name",
     "Account": "name",
     "Report": "name",
-    "Entity": "name",
     "Event": "name",
     "Location": "category",
     "Comment": "content",
@@ -219,7 +206,6 @@ RELATION_SPECS: dict[str, dict[str, tuple[str, str, str, str]]] = {
     "Account": {
         "tags": ("account_tags", "account_id", "Tag", "tag_id"),
         "comments": ("account_comments", "account_id", "Comment", "comment_id"),
-        "entities": ("entity_accounts", "account_id", "Entity", "entity_id"),
     },
     "Statement": {
         "tags": ("statement_tags", "statement_id", "Tag", "tag_id"),
@@ -245,11 +231,9 @@ NATURAL_KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "Asset": ("symbol",),
     "Investment": ("symbol",),
     "Tag": ("name",),
-    "Entity": ("name",),
 }
 
 # Unique natural-key fields that enforce uniqueness at the database level.
 UNIQUE_KEY_COLUMNS: dict[str, str] = {
-    "Entity": "name",
     "Event": "name",
 }
