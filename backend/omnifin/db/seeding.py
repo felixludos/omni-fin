@@ -53,6 +53,7 @@ class SeedDataLoader:
         """Load assets from assets_seed.yaml and return a list of Asset objects."""
         data = self._load_yaml("assets_seed.yaml")
         assets_data = data.get("assets", [])
+        investment_data = data.get("investments", [])
         assets: list[Asset] = []
         for item in assets_data:
             asset = Asset(symbol=item["symbol"], 
@@ -61,7 +62,6 @@ class SeedDataLoader:
             assets.append(asset)
             for tag in item.get("tags", []):
                 asset.add_tags(Tag(name=tag))
-            investment_data = data.get("investments", [])
         for item in investment_data:
             investment = Investment(symbol=item["symbol"], 
                                     name=item.get("name"), 
@@ -216,6 +216,67 @@ def _account_bytes(account: Account) -> bytes:
     return hashlib.sha256(f"acc:{account.name}".encode()).digest()[:16]
 
 
+def _seed_investment_metadata(
+    cursor: sqlite3.Cursor,
+    investment: Investment,
+    raw_item: dict[str, Any],
+    seed_report_id: bytes,
+) -> None:
+    """Create comments and tags for investment metadata fields.
+
+    Maps Investment domain fields (nyse_ticker, ibkr_ticker, identifier) to
+    comments and raw YAML fields (identifier_type, country, fund_type,
+    fund_focus) to tags.  Null-valued fields are skipped.
+    """
+    import datetime
+
+    symbol = investment.symbol
+    now = datetime.datetime.now().isoformat()
+
+    # --- Comments: nyse_ticker, ibkr_ticker, identifier -----------------------
+    comment_mapping: dict[str, tuple[str, Any]] = {
+        "nyse_ticker": ("nyse_ticker", getattr(investment, "nyse_ticker", None)),
+        "ibkr_ticker": ("ibkr_ticker", getattr(investment, "ibkr_ticker", None)),
+        "identifier": ("asset_identifier", getattr(investment, "identifier", None)),
+    }
+
+    for comment_type, value in comment_mapping.values():
+        if value is None:
+            continue
+        content = str(value)
+        comment_id = _deterministic_uuid_bytes(f"comment:{symbol}:{comment_type}")
+        cursor.execute(
+            "INSERT OR IGNORE INTO comments (comment_id, content, type, created_at, report_id) VALUES (?, ?, ?, ?, ?)",
+            (comment_id, content, comment_type, now, seed_report_id),
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO asset_comments (asset_symbol, comment_id) VALUES (?, ?)",
+            (symbol, comment_id),
+        )
+
+    # --- Tags: identifier_type, country, fund_type, fund_focus ----------------
+    tag_mapping: dict[str, tuple[str, Any]] = {
+        "identifier_type": ("asset_identifier_type", raw_item.get("identifier_type")),
+        "country": ("country", raw_item.get("country")),
+        "fund_type": ("fund_type", raw_item.get("fund_type")),
+        "fund_focus": ("fund_focus", raw_item.get("fund_focus")),
+    }
+
+    for category, value in tag_mapping.values():
+        if value is None:
+            continue
+        name = str(value)
+        tag_id = _deterministic_uuid_bytes(f"tag:{symbol}:{category}")
+        cursor.execute(
+            "INSERT OR IGNORE INTO tags (tag_id, name, category, report_id) VALUES (?, ?, ?, ?)",
+            (tag_id, name, category, seed_report_id),
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO asset_tags (asset_symbol, tag_id) VALUES (?, ?)",
+            (symbol, tag_id),
+        )
+
+
 def seed_database_with_conn(conn: sqlite3.Connection) -> None:
     """Internal helper that seeds using an open connection.
 
@@ -252,6 +313,14 @@ def seed_database_with_conn(conn: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO assets (symbol, name, category, report_id) VALUES (?, ?, ?, ?)",
             (asset.symbol, asset.name, category_str, seed_report_id),
         )
+
+    # --- Investment metadata --------------------------------------------------
+    raw_data = loader._load_yaml("assets_seed.yaml")
+    raw_investments = {item["symbol"]: item for item in raw_data.get("investments", [])}
+
+    for asset in assets:
+        if isinstance(asset, Investment) and asset.symbol in raw_investments:
+            _seed_investment_metadata(cursor, asset, raw_investments[asset.symbol], seed_report_id)
 
     conn.commit()
 
