@@ -54,8 +54,8 @@ MODEL_DEFS: dict[str, dict[str, Any]] = {
         "pk_type": "str",
         "label": "Assets",
         "low_columns": ["symbol", "name", "category", "report_id"],
-        "high_columns": ["Symbol", "Name", "Category", "Recorded By"],
-        "high_fields": ["symbol", "name", "category", "recorded_by"],
+        "high_columns": ["Symbol", "Name", "Category", "Type", "Identifier", "ID Type", "NYSE Ticker", "IBKR Ticker", "Country", "Fund Type", "Fund Focus"],
+        "high_fields": ["symbol", "name", "category", "type", "identifier", "identifier_type", "nyse_ticker", "ibkr_ticker", "country", "fund_type", "fund_focus"],
         "search_cols": ["symbol", "name", "category"],
         "order_by": "symbol",
     },
@@ -190,35 +190,118 @@ def _build_low_row(spec: dict, row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _build_high_row(conn: sqlite3.Connection, model: str, spec: dict, row: sqlite3.Row) -> dict[str, Any]:
+    if model == "assets":
+        return _build_asset_high_row(conn, spec, row)
+
     raw = dict(row)
     out: dict[str, Any] = {}
     pk = spec["pk"]
     table = spec["table"]
 
-    for i, hf in enumerate(spec["high_fields"]):
+    high_fields = spec["high_fields"]
+    high_columns = spec["high_columns"]
+    for i, hf in enumerate(high_fields):
         lc = spec["low_columns"][i]
         val = raw.get(lc)
+        key = high_columns[i]
 
         if hf == "id":
-            out[hf] = _hex(val) if pk != "symbol" else val
+            out[key] = _hex(val) if pk != "symbol" else val
         elif hf == "recorded_by":
-            out[hf] = _resolve_name(conn, "reports", "report_id", val)
+            out[key] = _resolve_name(conn, "reports", "report_id", val)
         elif hf == "sender":
-            out[hf] = _resolve_name(conn, "accounts", "account_id", val)
+            out[key] = _resolve_name(conn, "accounts", "account_id", val)
         elif hf == "receiver":
-            out[hf] = _resolve_name(conn, "accounts", "account_id", val)
+            out[key] = _resolve_name(conn, "accounts", "account_id", val)
         elif hf == "account":
-            out[hf] = _resolve_name(conn, "accounts", "account_id", val)
+            out[key] = _resolve_name(conn, "accounts", "account_id", val)
         elif hf == "asset":
-            out[hf] = val  # already the symbol string
+            out[key] = val  # already the symbol string
         elif hf == "date":
-            out[hf] = str(val) if val else None
+            out[key] = str(val) if val else None
         elif hf in ("amount", "balance"):
-            out[hf] = float(val) if val is not None else None
+            out[key] = float(val) if val is not None else None
         else:
-            out[hf] = _name_text(val)
+            out[key] = _name_text(val)
 
     return out
+
+
+def _build_asset_high_row(conn: sqlite3.Connection, spec: dict, row: sqlite3.Row) -> dict[str, Any]:
+    raw = dict(row)
+    symbol = raw.get("symbol", "")
+
+    # Fetch investment comments for this symbol
+    comments: dict[str, str] = {}
+    cur = conn.execute(
+        "SELECT c.type, c.content FROM asset_comments ac "
+        "JOIN comments c ON c.comment_id = ac.comment_id "
+        "WHERE ac.asset_symbol = ? AND c.type IN (?, ?, ?)",
+        (symbol, "nyse_ticker", "ibkr_ticker", "asset_identifier"),
+    )
+    for r in cur.fetchall():
+        comments[r["type"]] = r["content"]
+
+    # Fetch investment tags for this symbol
+    tags: dict[str, str] = {}
+    cur = conn.execute(
+        "SELECT t.category, t.name FROM asset_tags at "
+        "JOIN tags t ON t.tag_id = at.tag_id "
+        "WHERE at.asset_symbol = ? AND t.category IN (?, ?, ?, ?)",
+        (symbol, "asset_identifier_type", "country", "fund_type", "fund_focus"),
+    )
+    for r in cur.fetchall():
+        tags[r["category"]] = r["name"]
+
+    has_investment_meta = bool(comments) or bool(tags)
+
+    return {
+        "Symbol": raw.get("symbol"),
+        "Name": raw.get("name"),
+        "Category": raw.get("category"),
+        "Type": "Security" if has_investment_meta else "Asset",
+        "Identifier": comments.get("asset_identifier"),
+        "ID Type": tags.get("asset_identifier_type"),
+        "NYSE Ticker": comments.get("nyse_ticker"),
+        "IBKR Ticker": comments.get("ibkr_ticker"),
+        "Country": tags.get("country"),
+        "Fund Type": tags.get("fund_type"),
+        "Fund Focus": tags.get("fund_focus"),
+    }
+
+
+def _fetch_column_hints(conn: sqlite3.Connection, model: str) -> dict[str, list[str]]:
+    """Return possible values for categorical columns shown in the table."""
+    hints: dict[str, list[str]] = {}
+    if model != "assets":
+        return hints
+
+    # Distinct values from assets.category
+    cur = conn.execute("SELECT DISTINCT category FROM assets WHERE category IS NOT NULL")
+    vals = [str(r["category"]) for r in cur.fetchall() if r["category"] is not None]
+    if vals:
+        hints["Category"] = vals
+
+    # Distinct tag values per category for investment-related tags
+    # Map tag categories to their display column names
+    col_map: dict[str, str] = {
+        "asset_identifier_type": "ID Type",
+        "country": "Country",
+        "fund_type": "Fund Type",
+        "fund_focus": "Fund Focus",
+    }
+    for tag_cat, col_name in col_map.items():
+        cur = conn.execute(
+            "SELECT DISTINCT t.name FROM asset_tags at "
+            "JOIN tags t ON t.tag_id = at.tag_id "
+            "WHERE t.category = ? ORDER BY t.name",
+            (tag_cat,),
+        )
+        vals = [str(r["name"]) for r in cur.fetchall() if r["name"] is not None]
+        if vals:
+            hints[col_name] = vals
+
+    return hints
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -278,6 +361,7 @@ def browse_list(
             "low_columns": spec["low_columns"],
             "high_columns": spec["high_columns"],
             "rows": result_rows,
+            "column_hints": _fetch_column_hints(conn, model),
         }
     finally:
         conn.close()

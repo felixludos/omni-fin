@@ -730,7 +730,11 @@ from omnifin.models.categories import AssetTagOptions, AssetType, Country, Entit
 INVESTMENT_COMMENT_TYPES: dict[str, str] = {
     "nyse_ticker": "nyse_ticker",
     "ibkr_ticker": "ibkr_ticker",
-    "identifier": "identifier",
+    "identifier": "asset_identifier",
+    "identifier_type": "asset_identifier_type",
+}
+
+INVESTMENT_TAG_CATEGORIES: dict[str, str] = {
     "country": "country",
     "fund_type": "fund_type",
     "fund_focus": "fund_focus",
@@ -790,15 +794,22 @@ class Asset(Tagable, Commentable):
 
 
 class Investment(Asset):
-    """A financial instrument that is a security or fund, typically subject to tax reporting."""
+    """A financial instrument that is a security or fund, typically subject to tax reporting.
+
+    Investment extends Asset with additional metadata fields stored as typed comments
+    (nyse_ticker, ibkr_ticker, identifier) and categorized tags (identifier_type,
+    country, fund_type, fund_focus).  The Investment type is determined by the presence
+    of any investment-specific metadata rather than by category alone.
+    """
     nyse_ticker: Optional[str] = Field(default=None, description="NYSE ticker alias if available.")
     ibkr_ticker: Optional[str] = Field(default=None, description="Interactive Brokers ticker if it differs from canonical symbol.")
     identifier: Optional[str] = Field(default=None, description="ISIN, CUSIP, WKN, or other stable instrument identifier.")
-    country: Optional[Country | str] = Field(default=None, description="Primary domicile country code for the instrument.")
-    fund_type: Optional[FundType | str] = Field(default=None, description="Fund structure classification used for reporting/tax logic.")
+    identifier_type: Optional[str] = Field(default=None, description="The type of instrument identifier (e.g., 'cusip', 'isin', 'wkn').")
+    country: Optional[Country | str] = Field(default=None, description="Primary domicile country code for the instrument (e.g., 'US', 'NL', 'DE').")
+    fund_type: Optional[FundType | str] = Field(default=None, description="Fund structure classification used for reporting/tax logic (e.g., 'etf', 'mutual_fund', 'index_fund').")
     fund_focus: Optional[FundEquityRatioType | str] = Field(
         default=None,
-        description="Fund equity/real-estate exposure bucket for jurisdiction-specific tax treatment.",
+        description="Fund equity/real-estate exposure bucket for jurisdiction-specific tax treatment (e.g., 'equity_heavy', 'other_fund').",
     )
 
     @classmethod
@@ -846,6 +857,15 @@ class Investment(Asset):
             raw_value = _comment_value(matches[0])
             if raw_value is not None:
                 object.__setattr__(self, field_name, raw_value)
+        tag_categories = list(INVESTMENT_TAG_CATEGORIES.values())
+        tag_map = {category: _first_tags_by_category(self.tags(), category) for category in tag_categories}
+        for field_name, category in INVESTMENT_TAG_CATEGORIES.items():
+            matches = tag_map.get(category, [])
+            if not matches:
+                continue
+            tag_value = matches[0].name
+            if tag_value is not None:
+                object.__setattr__(self, field_name, tag_value)
 
     def _sync_investment_metadata(self) -> None:
         existing_comments = self.comments()
@@ -865,6 +885,23 @@ class Investment(Asset):
                 continue
             primary.content = desired_text
             primary.type = comment_type
+        existing_tags = self.tags()
+        for field_name, category in INVESTMENT_TAG_CATEGORIES.items():
+            desired_value = getattr(self, field_name, None)
+            desired_name = None if desired_value is None else _metadata_text(desired_value)
+            matches = _first_tags_by_category(existing_tags, category)
+            primary = matches[0] if matches else None
+            for extra in matches[1:]:
+                self.remove_tags(extra)
+            if desired_name is None:
+                if primary is not None:
+                    self.remove_tags(primary)
+                continue
+            if primary is None:
+                self.add_tags(Tag(_session=self._session, name=desired_name, category=category))
+                continue
+            primary.name = desired_name
+            primary.category = category
 
     def _hydrate(self) -> bool:
         hydrated = super()._hydrate()
@@ -1269,23 +1306,23 @@ class Entity(DomainModel):
 
 class Tag(DomainModel):
     """A label or category that can be applied to financial records for organization or reporting purposes."""
-    id: UUID = Field(default_factory=uuid7)
-    name: str = None
-    category: Optional[str] = None
-    recorded: Optional[Report] = None
+    id: UUID = Field(default_factory=uuid7, description="Unique tag identifier.")
+    name: str = Field(description="Display name for the tag (e.g., 'cusip', 'etf', 'US').")
+    category: Optional[str] = Field(default=None, description="Tag category/namespace for grouping related tags (e.g., 'asset_identifier_type', 'country', 'fund_type').")
+    recorded: Optional[Report] = Field(default=None, description="Report that introduced or updated this tag.")
 
 
 class AssetTag(Tag):
-    category: Optional[AssetTagOptions | str] = None
+    category: Optional[AssetTagOptions | str] = Field(default=None, description="Canonical tag category for asset-level labels.")
 
 
 class Comment(DomainModel):
     """A user-provided note or annotation associated with a financial record."""
-    id: UUID = Field(default_factory=uuid7)
-    created_at: datetime = Field(default_factory=utcnow)
-    content: str = None
-    type: Optional[str] = None
-    recorded: Optional[Report] = None
+    id: UUID = Field(default_factory=uuid7, description="Unique comment identifier.")
+    created_at: datetime = Field(default_factory=utcnow, description="Timestamp when the comment was created.")
+    content: str = Field(description="The comment text content. For typed comments this holds the string-encoded value (e.g., a ticker symbol, an ISIN, or a free-form note).")
+    type: Optional[str] = Field(default=None, description="Type discriminator for programmatic use (e.g., 'nyse_ticker', 'asset_identifier', 'acquisition_date').")
+    recorded: Optional[Report] = Field(default=None, description="Report that introduced or updated this comment.")
 
 
 # Resolve forward references for Pydantic.

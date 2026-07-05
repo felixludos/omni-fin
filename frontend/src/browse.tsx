@@ -15,6 +15,7 @@ type BrowseResponse = {
   low_columns: string[]
   high_columns: string[]
   rows: BrowseRow[]
+  column_hints?: Record<string, string[]>
 }
 
 type TagInfo = {
@@ -176,6 +177,7 @@ export default function BrowsePanel({ dbPath }: { dbPath: string | undefined }) 
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [browseData, setBrowseData] = useState<BrowseResponse | null>(null)
+  const [columnHints, setColumnHints] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(false)
   const [detailData, setDetailData] = useState<DetailResponse | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
@@ -199,8 +201,11 @@ export default function BrowsePanel({ dbPath }: { dbPath: string | undefined }) 
 
     fetch(`/api/browse/${activeTab}?${params}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
-      .then((data: BrowseResponse) => setBrowseData(data))
-      .catch(() => setBrowseData(null))
+      .then((data: BrowseResponse) => {
+        setBrowseData(data)
+        setColumnHints(data.column_hints ?? {})
+      })
+      .catch(() => { setBrowseData(null); setColumnHints({}) })
       .finally(() => setLoading(false))
   }, [activeTab, debouncedQuery, dbPath])
 
@@ -292,7 +297,7 @@ export default function BrowsePanel({ dbPath }: { dbPath: string | undefined }) 
                 </tr>
               </thead>
               <tbody>
-                {browseData.rows.map((row) => {
+                  {browseData.rows.map((row) => {
                   const data = viewMode === 'low' ? row.low : row.high
                   return (
                     <tr
@@ -300,9 +305,23 @@ export default function BrowsePanel({ dbPath }: { dbPath: string | undefined }) 
                       className="browse-row"
                       onClick={() => openDetail(row.id)}
                     >
-                      {columns.map((col) => (
-                        <td key={col}>{formatCellValue(data[col])}</td>
-                      ))}
+                      {columns.map((col) => {
+                        const val = data[col]
+                        const hints = columnHints[col]
+                        if (hints && val != null && val !== '') {
+                          return (
+                            <td key={col}>
+                              <span
+                                className="tag-pill"
+                                title={`Possible values: ${hints.join(', ')}`}
+                              >
+                                {formatCellValue(val)}
+                              </span>
+                            </td>
+                          )
+                        }
+                        return <td key={col}>{formatCellValue(val)}</td>
+                      })}
                     </tr>
                   )
                 })}
