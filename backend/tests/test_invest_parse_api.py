@@ -209,3 +209,50 @@ def test_new_investment_parsing(client, test_db_path, monkeypatch):
     assert commit_response.status_code == 200
     commit_data = commit_response.json()
     assert "Investment" in commit_data["inserts"]
+
+
+def test_group_rows_with_column_selection(client, monkeypatch):
+    async def fake_group_rows_impl(self, job_id, group_column):
+        from omnifin.api.invest_parse import InvestmentGroup, stable_hash_bytes
+        
+        job = self._require_job_locked(job_id)
+        groups = [
+            InvestmentGroup(
+                group_id=f"group_{stable_hash_bytes(b'[1, 2]').hex()[:8]}",
+                row_indices=[1, 2],
+                investment=None,
+                summary="COST",
+                confidence=0.9,
+            ),
+            InvestmentGroup(
+                group_id=f"group_{stable_hash_bytes(b'[3]').hex()[:8]}",
+                row_indices=[3],
+                investment=None,
+                summary="AAPL",
+                confidence=0.9,
+            ),
+        ]
+        job.investment_groups = groups
+        job.group_column = group_column
+        return job
+
+    monkeypatch.setattr(invest_parse.InvestParseJobManager, "group_rows", fake_group_rows_impl)
+
+    csv_text = "Symbol(CUSIP),Security description,Date,Quantity,Price\nCOST(22160K105),COSTCO WHOLESALE CORP,2024-01-01,10,50\nCOST(22160K105),COSTCO WHOLESALE CORP,2024-02-01,5,55\nAAPL,AAPL INC,2024-01-15,100,150\n"
+
+    create_response = client.post(
+        "/api/invest-parse/jobs",
+        json={"filename": "test.csv", "csv_text": csv_text},
+    )
+    assert create_response.status_code == 200
+    job_id = create_response.json()["id"]
+
+    group_response = client.post(
+        f"/api/invest-parse/jobs/{job_id}/group-rows",
+        json={"group_column": "Symbol(CUSIP)"},
+    )
+    assert group_response.status_code == 200
+    job = group_response.json()
+    assert "investment_groups" in job
+    assert len(job["investment_groups"]) == 2
+    assert job["group_column"] == "Symbol(CUSIP)"

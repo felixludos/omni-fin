@@ -114,6 +114,7 @@ export default function InvestParsePanel() {
   const [temperature, setTemperature] = useState<number>(0.6)
   const [batchProcessing, setBatchProcessing] = useState<boolean>(true)
   const [groupingStatus, setGroupingStatus] = useState<'idle' | 'grouping'>('idle')
+  const [groupColumn, setGroupColumn] = useState<string>('Symbol(CUSIP)')
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) return null
@@ -261,7 +262,7 @@ export default function InvestParsePanel() {
       const response = await fetch(`/api/invest-parse/jobs/${job.id}/group-rows`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ group_by: 'investment' })
+        body: JSON.stringify({ group_column: groupColumn })
       })
       if (!response.ok) throw new Error(await response.text())
       const data = (await response.json()) as InvestParseJob
@@ -572,6 +573,20 @@ export default function InvestParsePanel() {
               <button type="button" onClick={() => void rerunSelectedRows()}>
                 Rerun Selected
               </button>
+              <div className="column-selector">
+                <label htmlFor="group-column">Group by:</label>
+                <select
+                  id="group-column"
+                  value={groupColumn}
+                  onChange={(event) => setGroupColumn(event.currentTarget.value)}
+                >
+                  {job.headers.map((header) => (
+                    <option key={header} value={header}>
+                      {header}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button type="button" onClick={() => void groupRows()} disabled={groupingStatus === 'grouping'}>
                 {groupingStatus === 'grouping' ? 'Grouping...' : 'Group Rows'}
               </button>

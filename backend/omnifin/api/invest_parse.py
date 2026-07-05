@@ -6,6 +6,7 @@ import asyncio
 import csv
 import io
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -14,7 +15,6 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from omnifin.ai.structured import structured_completion
 from omnifin.core.db import DatabaseSession
 from omnifin.core.ids import stable_hash_bytes, utcnow
 from omnifin.models import Asset, Investment, Report, Tag, Comment
@@ -29,6 +29,18 @@ DB_ENV = "OMNIFIN_DB"
 def _db_path() -> str:
     from omnifin.api.server import db_path as server_db_path
     return server_db_path()
+
+
+def _strip_bom(text: str) -> str:
+    """Remove BOM (Byte Order Mark) from text if present."""
+    if text.startswith('\ufeff'):
+        return text[1:]
+    return text
+
+
+def _normalize_headers(headers: list[str]) -> list[str]:
+    """Normalize header names by stripping whitespace and BOM."""
+    return [h.strip() for h in headers if h] if headers else []
 
 
 class InvestmentGroup(BaseModel):
@@ -81,7 +93,7 @@ class InvestParseJob(BaseModel):
     model: str = "gemma4:31b"
     base_url: str = "http://localhost:11434/v1"
     investment_groups: list[InvestmentGroup] = Field(default_factory=list)
-    group_rows: bool = False
+    group_column: str | None = None
 
 
 class CreateJobRequest(BaseModel):
@@ -97,7 +109,7 @@ class LoadExampleRequest(BaseModel):
 
 
 class GroupRowsRequest(BaseModel):
-    group_by: str = "investment"
+    group_column: str
 
 
 class UpdateRowRequest(BaseModel):
@@ -138,10 +150,6 @@ class GroupRow(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
-class GroupRowsResponse(BaseModel):
-    groups: list[GroupRow] = Field(default_factory=list)
-
-
 def _load_existing_symbols() -> list[str]:
     """Load all existing asset symbols from the database."""
     with DatabaseSession(_db_path()) as session:
@@ -159,13 +167,16 @@ class InvestParseJobManager:
         self._lock = asyncio.Lock()
 
     async def create_job(self, payload: CreateJobRequest) -> InvestParseJob:
-        reader = csv.DictReader(io.StringIO(payload.csv_text))
+        csv_text = _strip_bom(payload.csv_text)
+        reader = csv.DictReader(io.StringIO(csv_text))
         if not reader.fieldnames:
             raise HTTPException(status_code=400, detail="CSV has no header row")
 
+        headers = _normalize_headers(list(reader.fieldnames))
+        
         rows: list[RowState] = []
         for idx, raw_row in enumerate(reader, start=1):
-            source_row = {str(k): ("" if v is None else str(v)) for k, v in raw_row.items()}
+            source_row = {_normalize_headers([str(k)])[0]: ("" if v is None else str(v)) for k, v in raw_row.items()}
             row_hash = stable_hash_bytes(
                 json.dumps(source_row, sort_keys=True, ensure_ascii=False)
             ).hex()
@@ -182,8 +193,8 @@ class InvestParseJobManager:
         job = InvestParseJob(
             id=uuid4().hex,
             filename=payload.filename,
-            document_hash=stable_hash_bytes(payload.csv_text).hex(),
-            headers=list(reader.fieldnames),
+            document_hash=stable_hash_bytes(csv_text).hex(),
+            headers=headers,
             rows=rows,
             temperature=payload.temperature,
             model=payload.model,
@@ -204,7 +215,7 @@ class InvestParseJobManager:
                 detail=f"Example file '{payload.filename}' not found in {example_dir}",
             )
 
-        csv_text = file_path.read_text(encoding="utf-8")
+        csv_text = _strip_bom(file_path.read_text(encoding="utf-8"))
         create_payload = CreateJobRequest(filename=payload.filename, csv_text=csv_text)
         job = await self.create_job(create_payload)
 
@@ -215,45 +226,39 @@ class InvestParseJobManager:
 
         return job
 
-    async def group_rows(self, job_id: str, group_by: str = "investment") -> InvestParseJob:
+    async def group_rows(self, job_id: str, group_column: str) -> InvestParseJob:
         async with self._lock:
             job = self._require_job_locked(job_id)
             
-            # Build prompt for grouping analysis
-            prompt = self._build_grouping_prompt(job)
+            if group_column not in job.headers:
+                raise HTTPException(status_code=400, detail=f"Column '{group_column}' not found in CSV headers")
             
-            # Call AI to analyze and group rows — use the job's stored model, base_url, and temperature
-            try:
-                group_response = await asyncio.to_thread(
-                    structured_completion,
-                    prompt,
-                    GroupRowsResponse,
-                    model=job.model,
-                    base_url=job.base_url,
-                    api_key="ollama",
-                    temperature=job.temperature,
-                    max_tokens=8000,
-                    timeout=120.0,
-                )
+            # Group rows by column value
+            groups_by_value: dict[str, list[int]] = {}
+            for row in job.rows:
+                value = row.source_row.get(group_column, "")
+                # Extract symbol from Symbol(CUSIP) format if applicable
+                if "symbol" in group_column.lower() or "ticker" in group_column.lower():
+                    value = _extract_symbol(value)
                 
-                # Create InvestmentGroup objects from AI response
-                groups = []
-                for g in group_response.groups:
-                    groups.append(InvestmentGroup(
-                        group_id=f"group_{stable_hash_bytes(str(g['row_indices']).encode()).hex()[:8]}",
-                        row_indices=g["row_indices"],
-                        investment=None,
-                        summary=g.get("summary", ""),
-                        confidence=g.get("confidence", 0.0),
-                    ))
-                
-                job.investment_groups = groups
-                job.group_rows = True
-                job.updated_at = utcnow()
-                
-            except Exception as exc:
-                # If grouping fails, return job as-is
-                pass
+                if value not in groups_by_value:
+                    groups_by_value[value] = []
+                groups_by_value[value].append(row.index)
+            
+            # Create InvestmentGroup objects
+            groups = []
+            for value, row_indices in groups_by_value.items():
+                groups.append(InvestmentGroup(
+                    group_id=f"group_{stable_hash_bytes(str(row_indices).encode()).hex()[:8]}",
+                    row_indices=sorted(row_indices),
+                    investment=None,
+                    summary=value if value else "Unknown",
+                    confidence=0.9,
+                ))
+            
+            job.investment_groups = groups
+            job.group_column = group_column
+            job.updated_at = utcnow()
             
             return job
 
@@ -575,42 +580,12 @@ def _build_prompt(
     return rendered
 
 
-def _build_grouping_prompt(job: InvestParseJob) -> str:
-    """Build prompt for grouping rows by investment identity."""
-    rows_json = []
-    for row in job.rows:
-        rows_json.append({
-            "index": row.index,
-            "row": row.source_row,
-            "symbol_col": next((k for k in row.source_row if "symbol" in k.lower() or "ticker" in k.lower() or "security" in k.lower()), None),
-            "symbol_val": next((v for k, v in row.source_row.items() if "symbol" in k.lower() or "ticker" in k.lower() or "security" in k.lower()), ""),
-        })
-    
-    prompt = f"""You are an investment grouping expert for Omnifin.
-
-Analyze the rows below and group them by the investment they represent. Rows with the same investment (same ticker, same security) should be grouped together.
-
-## Headers
-{json.dumps(job.headers, ensure_ascii=False)}
-
-## Rows to Group
-{json.dumps(rows_json, ensure_ascii=False, indent=2)}
-
-## Instructions
-1. Analyze each row to identify the investment it represents
-2. Group rows that share the same investment (same symbol/ticker/security)
-3. For each group, provide:
-   - row_indices: List of row numbers in this group
-   - summary: Brief description of the investment
-   - confidence: 0.0-1.0 confidence in the grouping
-
-## Output Requirements
-Return only valid JSON matching this schema:
-{{"groups": [{{"row_indices": [1, 2, 3], "summary": "string", "confidence": 0.0-1.0}}, ...]}}
-
-Do not include markdown fences or explanatory prose."""
-    
-    return prompt
+def _extract_symbol(symbol_cusip: str) -> str:
+    """Extract ticker symbol from Symbol(CUSIP) format like 'COST(22160K105)'."""
+    if not symbol_cusip:
+        return ""
+    match = re.match(r'^([A-Z]+)', symbol_cusip)
+    return match.group(1) if match else symbol_cusip
 
 
 def _default_prompt_template() -> str:
@@ -781,4 +756,4 @@ async def commit_invest_parse_job(job_id: str, payload: CommitJobRequest) -> Com
 
 @router.post("/jobs/{job_id}/group-rows", response_model=InvestParseJob)
 async def group_invest_parse_rows(job_id: str, payload: GroupRowsRequest) -> InvestParseJob:
-    return await manager.group_rows(job_id, payload.group_by)
+    return await manager.group_rows(job_id, payload.group_column)
