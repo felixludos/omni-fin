@@ -186,6 +186,7 @@ def open_database(payload: OpenDbRequest) -> DbInfoResponse:
 
 class CreateDbRequest(BaseModel):
     filename: str
+    seed: bool = True
 
 
 @app.post("/api/db/create", response_model=DbInfoResponse)
@@ -213,6 +214,11 @@ def create_database(payload: CreateDbRequest) -> DbInfoResponse:
             pass
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to create database: {exc}")
+
+    if payload.seed:
+        from omnifin.db.seeding import seed_database
+
+        seed_database(db_path_str)
 
     global _current_db_path
     _current_db_path = db_path_str

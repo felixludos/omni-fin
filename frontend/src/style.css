@@ -394,6 +394,21 @@ textarea {
   font-weight: 500;
 }
 
+.db-seed-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.db-seed-checkbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 .app-title {
   font-size: 1.6rem;
   font-weight: 700;

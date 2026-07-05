@@ -151,6 +151,7 @@ function App() {
   const [isLoadingDb, setIsLoadingDb] = useState(true)
   const [dbMessage, setDbMessage] = useState('')
   const [hasDb, setHasDb] = useState(false)
+  const [seedWithData, setSeedWithData] = useState(true)
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) {
@@ -464,7 +465,7 @@ function App() {
         response = await fetch('/api/db/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: name }),
+          body: JSON.stringify({ filename: name, seed: seedWithData }),
         })
       }
       if (!response.ok) {
@@ -571,6 +572,17 @@ function App() {
                 {isLoadingDb ? 'Loading…' : 'Load / Create'}
               </button>
             </div>
+
+            {dbMode === 'create' && (
+              <label className="db-seed-checkbox">
+                <input
+                  type="checkbox"
+                  checked={seedWithData}
+                  onChange={(e) => setSeedWithData(e.currentTarget.checked)}
+                />
+                Populate with seed data
+              </label>
+            )}
 
             {dbMessage && <p className="db-message">{dbMessage}</p>}
           </div>
