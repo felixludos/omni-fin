@@ -23,9 +23,15 @@ Each field is documented below with expected values and examples:
 - Must be uppercase, no spaces
 - Use the primary ticker for the investment
 
-**name** (optional but recommended): Full security name.
-- Examples: "Apple Inc. Common Stock", "Vanguard FTSE All-World UCITS ETF", "iShares Bitcoin Trust"
-- Include full legal name for stocks, full fund name for ETFs/mutual funds
+**name** (optional but recommended): Full security name, sanitized to natural investor-friendly format.
+- Examples: "Costco", "Apple", "Vanguard Total Stock Market ETF", "iShares Bitcoin Trust"
+- Be aggressive in simplifying: use the most common, recognizable name
+- For stocks: use the company's public/common name (e.g., "Costco", "Apple", "Microsoft")
+- For ETFs: use the fund family's marketing name (e.g., "Vanguard Total Stock Market", "iShares Core S&P 500")
+- Never use legal entity names or technical transaction names
+- Remove suffixes like "Common Stock", "Ordinary Shares", "SHARES", "CLASS A", etc.
+- Remove exchange identifiers and tickers from the name
+- Keep it short, natural, and unambiguous
 
 **category** (optional): Asset type classification from the AssetType enum.
 - "stock" - Individual company shares (e.g., AAPL, MSFT, GOOGL)
@@ -105,4 +111,4 @@ Do not include markdown fences or explanatory prose.
 
 Example outputs:
 - Known: {"summary": "AAPL stock purchase", "confidence": 0.9, "result": {"status": "known", "symbol": "AAPL", "investment": null}}
-- New: {"summary": "New international ETF exposure", "confidence": 0.8, "result": {"status": "new", "symbol": null, "investment": {"symbol": "EMXC", "name": "iShares Core MSCI Emerging Markets Investments", "category": "etf", "nyse_ticker": null, "ibkr_ticker": "EMXC", "identifier": "IE00B4L5Y983", "identifier_type": "isin", "country": "IE", "fund_type": "etf", "fund_focus": "equity_heavy"}}}
+- New: {"summary": "New international ETF exposure", "confidence": 0.8, "result": {"status": "new", "symbol": null, "investment": {"symbol": "EMXC", "name": "iShares Core MSCI Emerging Markets", "category": "etf", "nyse_ticker": null, "ibkr_ticker": "EMXC", "identifier": "IE00B4L5Y983", "identifier_type": "isin", "country": "IE", "fund_type": "etf", "fund_focus": "equity_heavy"}}}

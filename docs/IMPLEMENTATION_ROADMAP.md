@@ -367,6 +367,10 @@ Given the input row (displayed as a JSON object), and a basic list of all existi
 Other than that the rows should be processed similarly to the existing ingestion service, with the ability to edit the AI output and save it to the database. The user should also be able to download the results as a CSV file for further analysis or record-keeping.
 ```
 
+```
+Currently, since each row is being processed independently, if the same new stock gets sold repeatedly, then the AI has to repeatedly parse the same information - which is very inefficient. To improve this, add a "pre-processing" step using the AI where the column names of the uploaded CSV file are analyzed to identify which columns can likely be used to uniquely identify the investment involved in each row. The rows that are merged should be visible to the user, and most importantly when the AI is called on one group, the results should be shown for all the rows in that group, so that the user can see all the rows that were merged and the AI output for each of them. This should be done in a way that is transparent to the user, so that they can see which rows were merged and what the AI output was for each of them. 
+```
+
 ---
 
 ### 2.1 Implement identity map correctly

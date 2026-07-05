@@ -102,6 +102,8 @@ export default function InvestParsePanel() {
   const [existingSymbols, setExistingSymbols] = useState<string[]>([])
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b')
+  const [temperature, setTemperature] = useState<number>(0.6)
+  const [batchProcessing, setBatchProcessing] = useState<boolean>(true)
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) return null
@@ -192,7 +194,7 @@ export default function InvestParsePanel() {
       const body: Record<string, unknown> = {
         filename: file.name,
         csv_text: csvText,
-        temperature: 0.6,
+        temperature: temperature,
         model: selectedModel,
         base_url: 'http://localhost:11434/v1'
       }
@@ -267,6 +269,23 @@ export default function InvestParsePanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ row_indices: selectedIndices })
+      })
+      if (!response.ok) throw new Error(await response.text())
+      const data = (await response.json()) as InvestParseJob
+      setJob(data)
+    } catch (error) {
+      setErrorMessage(String(error))
+    }
+  }
+
+  const rerunSingleRow = async (rowIndex: number): Promise<void> => {
+    if (!job) return
+    setErrorMessage('')
+    try {
+      const response = await fetch(`/api/invest-parse/jobs/${job.id}/rerun-rows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ row_indices: [rowIndex] })
       })
       if (!response.ok) throw new Error(await response.text())
       const data = (await response.json()) as InvestParseJob
@@ -418,22 +437,44 @@ export default function InvestParsePanel() {
         <>
           <header className="topbar">
             <div>
-              {availableModels.length > 0 && (
-                <div className="account-selector">
-                  <label htmlFor="model-select">Model:</label>
-                  <select
-                    id="model-select"
-                    value={selectedModel}
-                    onChange={(event) => setSelectedModel(event.currentTarget.value)}
-                  >
-                    {availableModels.map((model) => (
+              <div className="account-selector">
+                <label htmlFor="model-select">Model:</label>
+                <select
+                  id="model-select"
+                  value={selectedModel}
+                  onChange={(event) => setSelectedModel(event.currentTarget.value)}
+                >
+                  {availableModels.length > 0 ? (
+                    availableModels.map((model) => (
                       <option key={model.name} value={model.name}>
                         {model.name}
                       </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                    ))
+                  ) : (
+                    <option value="gemma4:31b">gemma4:31b</option>
+                  )}
+                </select>
+              </div>
+              <div className="account-selector">
+                <label htmlFor="temperature">Temperature:</label>
+                <input
+                  id="temperature"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="1"
+                  value={temperature}
+                  onChange={(event) => setTemperature(parseFloat(event.currentTarget.value))}
+                />
+              </div>
+              <label className="account-selector">
+                <input
+                  type="checkbox"
+                  checked={batchProcessing}
+                  onChange={(event) => setBatchProcessing(event.currentTarget.checked)}
+                />
+                <span>Batch Process</span>
+              </label>
               {accounts.length > 0 && (
                 <div className="account-selector">
                   <label htmlFor="source-account">Source Account:</label>
@@ -581,6 +622,13 @@ export default function InvestParsePanel() {
                       onChange={(event) => setInvestmentEditorText(event.currentTarget.value)}
                       spellCheck={false}
                     />
+                    <button type="button" className="primary" onClick={() => {
+                      if (selectedRow) {
+                        void rerunSingleRow(selectedRow.index)
+                      }
+                    }}>
+                      Rerun This Row
+                    </button>
                   </>
                 ) : (
                   <p>Select a row to edit input values.</p>
