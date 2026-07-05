@@ -101,6 +101,21 @@ export default function InvestParsePanel() {
   }, [job, selectedRowIndex])
 
   const [investmentEditorText, setInvestmentEditorText] = useState<string>('{}')
+  const [dbReady, setDbReady] = useState<boolean>(false)
+  const [dbLoading, setDbLoading] = useState<boolean>(true)
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(() => {
+        setDbReady(true)
+        setDbLoading(false)
+      })
+      .catch(() => {
+        setDbReady(false)
+        setDbLoading(false)
+      })
+  }, [])
 
   useEffect(() => {
     if (!selectedRow?.interpretation?.result) {
@@ -124,10 +139,8 @@ export default function InvestParsePanel() {
       .catch(() => {})
   }, [])
 
-  const hasDb = accounts.length > 0 || existingSymbols.length > 0
-
   useEffect(() => {
-    if (!hasDb || !job) return
+    if (!dbReady || !job) return
     const timer = window.setInterval(() => {
       fetch(`/api/invest-parse/jobs/${job.id}`)
         .then((response) => response.json())
@@ -148,7 +161,7 @@ export default function InvestParsePanel() {
         })
     }, 800)
     return () => window.clearInterval(timer)
-  }, [job?.id, hasDb])
+  }, [job?.id, dbReady])
 
   const uploadCsv = async (file: File): Promise<void> => {
     setIsUploading(true)
@@ -369,14 +382,19 @@ export default function InvestParsePanel() {
 
   return (
     <main className="app-root">
-      {!hasDb && (
+      {dbLoading && (
+        <section className="empty-state">
+          <p>Checking database...</p>
+        </section>
+      )}
+      {!dbLoading && !dbReady && (
         <section className="empty-state">
           <h2>No Database Loaded</h2>
           <p>Select an existing database or create a new one to begin.</p>
         </section>
       )}
 
-      {hasDb && (
+      {dbReady && (
         <>
           <header className="topbar">
             <div>
@@ -580,7 +598,7 @@ export default function InvestParsePanel() {
             </section>
           )}
 
-          {!job && hasDb && (
+          {!job && dbReady && (
             <section className="empty-state">
               <h2>No Active Investment Parse Job</h2>
               <p>Upload one of your broker CSV files to start AI-assisted investment parsing.</p>

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.request
+import urllib.error
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +73,34 @@ def serialize(obj: Any) -> Any:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "database": db_path()}
+
+
+class ModelInfo(BaseModel):
+    name: str
+    size: int
+    digest: str
+
+
+@app.get("/api/models", response_model=list[ModelInfo])
+def list_models() -> list[ModelInfo]:
+    base_url = os.environ.get("OMNIFIN_OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(f"{base_url}/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            models = []
+            for model in data.get("models", []):
+                models.append(
+                    ModelInfo(
+                        name=model.get("name", ""),
+                        size=model.get("size", 0),
+                        digest=model.get("digest", ""),
+                    )
+                )
+            return models
+    except Exception:
+        return []
 
 
 @app.get("/api/assets")
