@@ -65,6 +65,20 @@ type CommitResponse = {
   errors: string[]
 }
 
+type DbInfo = {
+  path: string
+  filename: string
+  exists: boolean
+  size_bytes: number
+  dir: string
+}
+
+type DbFileInfo = {
+  path: string
+  filename: string
+  size_bytes: number
+}
+
 const SAMPLE_OBJECTS: ProposedObjectType[] = [
   'transfer',
   'statement',
@@ -127,6 +141,16 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [commitResult, setCommitResult] = useState<CommitResponse | null>(null)
 
+  // Database management state
+  const [currentDb, setCurrentDb] = useState<DbInfo | null>(null)
+  const [availableDbs, setAvailableDbs] = useState<DbFileInfo[]>([])
+  const [dbMode, setDbMode] = useState<'browse' | 'create'>('browse')
+  const [dbInput, setDbInput] = useState('')
+  const [selectedDbPath, setSelectedDbPath] = useState('')
+  const [isLoadingDb, setIsLoadingDb] = useState(true)
+  const [dbMessage, setDbMessage] = useState('')
+  const [hasDb, setHasDb] = useState(false)
+
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) {
       return null
@@ -156,13 +180,51 @@ function App() {
     )
   }, [selectedRowIndex, selectedRow?.updated_at])
 
+  // Auto-load previous database on mount, then scan for available DBs
   useEffect(() => {
-    fetch('/api/accounts')
-      .then((response) => response.json())
-      .then((data: AccountInfo[]) => setAccounts(data))
-      .catch((_error: unknown) => {})
+    const lastDb = localStorage.getItem('omnifin_last_db')
 
-    if (!job) {
+    const loadDb = lastDb
+      ? fetch('/api/db/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: lastDb }),
+        }).then((r) => (r.ok ? r.json() : Promise.reject()))
+      : fetch('/api/db').then((r) => r.json())
+
+    const onDbLoaded = (data: DbInfo) => {
+      setCurrentDb(data)
+      if (data.exists) {
+        setHasDb(true)
+        setDbMessage(lastDb ? `Loaded previous database: ${data.filename}` : `Loaded database: ${data.filename}`)
+        fetch('/api/accounts')
+          .then((r) => r.json())
+          .then((accounts: AccountInfo[]) => setAccounts(accounts))
+          .catch(() => {})
+      }
+    }
+
+    loadDb.then(onDbLoaded).catch(() => {
+      fetch('/api/db')
+        .then((r) => r.json())
+        .then(onDbLoaded)
+        .catch(() => {})
+    }).finally(() => setIsLoadingDb(false))
+
+    fetch('/api/db/scan')
+      .then((r) => r.json())
+      .then((data: DbFileInfo[]) => {
+        setAvailableDbs(data)
+        if (data.length > 0) {
+          setSelectedDbPath(data[0].path)
+          setDbInput(data[0].filename)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!hasDb || !job) {
       return
     }
     const timer = window.setInterval(() => {
@@ -375,215 +437,364 @@ function App() {
   const processedCount = job ? job.rows.filter((row) => row.status === 'processed').length : 0
   const failedCount = job ? job.rows.filter((row) => row.status === 'error').length : 0
 
+  const handleLoadCreateDb = async (): Promise<void> => {
+    setErrorMessage('')
+    setIsLoadingDb(true)
+    try {
+      let response: Response
+      if (dbMode === 'browse') {
+        if (!selectedDbPath) {
+          setErrorMessage('No database selected')
+          setIsLoadingDb(false)
+          return
+        }
+        response = await fetch('/api/db/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: selectedDbPath }),
+        })
+      } else {
+        const name = dbInput.trim()
+        if (!name) {
+          setErrorMessage('Enter a filename')
+          setIsLoadingDb(false)
+          return
+        }
+        response = await fetch('/api/db/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: name }),
+        })
+      }
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text.length < 200 ? text : `Request failed (${response.status})`)
+      }
+      const data = (await response.json()) as DbInfo
+      localStorage.setItem('omnifin_last_db', data.path)
+      setCurrentDb(data)
+      setHasDb(true)
+      setDbMessage(`Loaded database: ${data.filename}`)
+      setJob(null)
+      setCommitResult(null)
+      setStatusMessage('Upload a CSV to start AI ingestion')
+      fetch('/api/accounts')
+        .then((r) => r.json())
+        .then((accounts: AccountInfo[]) => setAccounts(accounts))
+        .catch(() => {})
+    } catch (error) {
+      setErrorMessage(String(error))
+    } finally {
+      setIsLoadingDb(false)
+    }
+  }
+
   return (
     <main className="app-root">
-      <header className="topbar">
-        <div>
-          <h1>Omnifin AI Ingestion Studio</h1>
-          {accounts.length > 0 && (
-            <div className="account-selector">
-              <label htmlFor="source-account">Source Account:</label>
-              <select
-                id="source-account"
-                value={selectedAccountId}
-                onChange={(event) => setSelectedAccountId(event.currentTarget.value)}
-              >
-                <option value="">— No source account —</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name || 'Unnamed'} ({account.type ? account.type : ''}){account.institution ? ` — ${account.institution}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <p>{statusMessage}</p>
-          {job && (
-            <p>
-              File: <strong>{job.filename || fileName}</strong> | Rows: <strong>{job.rows.length}</strong> |
-              Processed: <strong>{processedCount}</strong> | Errors: <strong>{failedCount}</strong>
-            </p>
+      {/* ── Database Header ─────────────────────────────────────────── */}
+      <header className="db-header">
+        <div className="db-header-main">
+          <span className="db-label">Database</span>
+          {isLoadingDb ? (
+            <span className="db-loading">Loading…</span>
+          ) : currentDb ? (
+            <span className="db-path-text" title={currentDb.path}>
+              {currentDb.filename}{' '}
+              <span className="db-size">
+                ({(currentDb.size_bytes / 1024).toFixed(1)} KB)
+              </span>
+            </span>
+          ) : (
+            <span className="db-path-text muted">No database loaded</span>
           )}
         </div>
-        <label className="upload-button">
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            disabled={isUploading}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0]
-              if (file) {
-                void uploadCsv(file)
-              }
-            }}
-          />
-          {isUploading ? 'Uploading...' : 'Upload CSV'}
-        </label>
+
+        {!isLoadingDb && (
+          <div className="db-controls">
+            <div className="db-mode-toggle">
+              <button
+                type="button"
+                className={dbMode === 'browse' ? 'active' : ''}
+                onClick={() => setDbMode('browse')}
+              >
+                Browse existing
+              </button>
+              <button
+                type="button"
+                className={dbMode === 'create' ? 'active' : ''}
+                onClick={() => setDbMode('create')}
+              >
+                Create new
+              </button>
+            </div>
+
+            <div className="db-input-row">
+              {dbMode === 'browse' ? (
+                <select
+                  className="db-select"
+                  value={selectedDbPath}
+                  onChange={(e) => {
+                    setSelectedDbPath(e.currentTarget.value)
+                    const match = availableDbs.find((d) => d.path === e.currentTarget.value)
+                    if (match) setDbInput(match.filename)
+                  }}
+                >
+                  {availableDbs.length === 0 && (
+                    <option value="">No databases found</option>
+                  )}
+                  {availableDbs.map((dbf) => (
+                    <option key={dbf.path} value={dbf.path}>
+                      {dbf.filename}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="db-input"
+                  type="text"
+                  placeholder="e.g. my_finance.db"
+                  value={dbInput}
+                  onChange={(e) => setDbInput(e.currentTarget.value)}
+                />
+              )}
+              <button
+                type="button"
+                className="db-load-btn"
+                disabled={
+                  isLoadingDb ||
+                  (dbMode === 'browse' && (!selectedDbPath || availableDbs.length === 0)) ||
+                  (dbMode === 'create' && !dbInput.trim())
+                }
+                onClick={() => void handleLoadCreateDb()}
+              >
+                {isLoadingDb ? 'Loading…' : 'Load / Create'}
+              </button>
+            </div>
+
+            {dbMessage && <p className="db-message">{dbMessage}</p>}
+          </div>
+        )}
       </header>
+
+      <h1 className="app-title">Omnifin AI Ingestion Studio</h1>
 
       {errorMessage && <p className="error-banner">{errorMessage}</p>}
 
-      {job && (
-        <section className="control-panel">
-          <button type="button" onClick={() => void postJobAction('pause')} disabled={job.paused || job.status === 'completed'}>
-            Pause
-          </button>
-          <button type="button" onClick={() => void postJobAction('resume')} disabled={!job.paused}>
-            Resume
-          </button>
-          <button type="button" onClick={() => void postJobAction('rerun-all')}>
-            Rerun All
-          </button>
-          <button type="button" onClick={() => void rerunSelectedRows()}>
-            Rerun Selected
-          </button>
-          <button type="button" onClick={() => void toggleSelectAll(true)}>
-            Select All
-          </button>
-          <button type="button" onClick={() => void toggleSelectAll(false)}>
-            Clear Selection
-          </button>
-          <button type="button" disabled={isCommitting} onClick={() => void commitSelectedRows(true)}>
-            Dry Run Save
-          </button>
-          <button type="button" disabled={isCommitting} className="primary" onClick={() => void commitSelectedRows(false)}>
-            Save Selected Rows
-          </button>
-        </section>
-      )}
-
-      {job && (
-        <section className="workspace-grid">
-          <article className="row-list">
-            <h2>Rows</h2>
-            <div className="row-table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Use</th>
-                    <th>Row</th>
-                    <th>Status</th>
-                    <th>Summary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {job.rows.map((row) => (
-                    <tr
-                      key={row.index}
-                      className={row.index === selectedRowIndex ? 'selected-row' : ''}
-                      onClick={() => setSelectedRowIndex(row.index)}
-                    >
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={row.selected}
-                          onChange={(event) => {
-                            event.stopPropagation()
-                            void toggleRowSelection(row.index, event.currentTarget.checked)
-                          }}
-                        />
-                      </td>
-                      <td>{row.index}</td>
-                      <td>
-                        <span className={`status-pill ${row.status}`}>{row.status}</span>
-                      </td>
-                      <td>{row.error || row.llm_error || row.interpretation?.summary || ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </article>
-
-          <article className="row-editor">
-            <h2>Input Row (Left)</h2>
-            {selectedRow ? (
-              <>
-                <p>
-                  Row <strong>{selectedRow.index}</strong> hash <code>{selectedRow.row_hash}</code>
-                </p>
-                <p>
-                  Checks: {selectedRow.checks.length === 0 ? 'none' : selectedRow.checks.join(' | ')}
-                </p>
-                {selectedRow.llm_error && (
-                  <p className="error-banner">LLM error: {selectedRow.llm_error}</p>
-                )}
-                <textarea
-                  value={rowEditorText}
-                  onChange={(event) => setRowEditorText(event.currentTarget.value)}
-                  spellCheck={false}
-                />
-              </>
-            ) : (
-              <p>Select a row to edit input values.</p>
-            )}
-          </article>
-
-          <article className="result-editor">
-            <h2>Proposed Objects (Right)</h2>
-            {selectedRow ? (
-              <>
-                <p>
-                  AI confidence: <strong>{selectedRow.interpretation?.confidence ?? 0}</strong>
-                </p>
-                <div className="object-buttons">
-                  {SAMPLE_OBJECTS.map((objectType) => (
-                    <button key={objectType} type="button" onClick={() => addObjectToSelectedRow(objectType)}>
-                      + {objectType}
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  value={resultEditorText}
-                  onChange={(event) => setResultEditorText(event.currentTarget.value)}
-                  spellCheck={false}
-                />
-                <div className="editor-actions">
-                  <button type="button" className="primary" onClick={() => void saveRowEdits()}>
-                    Save Row Edits
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (job) {
-                        void fetch(`/api/ingest/jobs/${job.id}/rerun-rows`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ row_indices: [selectedRow.index] })
-                        })
-                          .then((response) => response.json())
-                          .then((data: IngestJob) => setJob(data))
-                          .catch((error: unknown) => setErrorMessage(String(error)))
-                      }
-                    }}
+      {hasDb ? (
+        <>
+          <header className="topbar">
+            <div>
+              {accounts.length > 0 && (
+                <div className="account-selector">
+                  <label htmlFor="source-account">Source Account:</label>
+                  <select
+                    id="source-account"
+                    value={selectedAccountId}
+                    onChange={(event) => setSelectedAccountId(event.currentTarget.value)}
                   >
-                    Rerun This Row
-                  </button>
+                    <option value="">— No source account —</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name || 'Unnamed'} ({account.type ? account.type : ''}){account.institution ? ` — ${account.institution}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </>
-            ) : (
-              <p>Select a row to inspect AI results.</p>
-            )}
-          </article>
-        </section>
-      )}
+              )}
+              <p>{statusMessage}</p>
+              {job && (
+                <p>
+                  File: <strong>{job.filename || fileName}</strong> | Rows: <strong>{job.rows.length}</strong> |
+                  Processed: <strong>{processedCount}</strong> | Errors: <strong>{failedCount}</strong>
+                </p>
+              )}
+            </div>
+            <label className="upload-button">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                disabled={isUploading}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  if (file) {
+                    void uploadCsv(file)
+                  }
+                }}
+              />
+              {isUploading ? 'Uploading...' : 'Upload CSV'}
+            </label>
+          </header>
 
-      {commitResult && (
-        <section className="commit-result">
-          <h2>Commit Result</h2>
-          <p>
-            Report ID: <strong>{commitResult.report_id}</strong> | Selected rows: <strong>{commitResult.selected_rows}</strong>
-          </p>
-          <p>Plan valid: <strong>{String(commitResult.plan_valid)}</strong></p>
-          <pre>{JSON.stringify(commitResult, null, 2)}</pre>
-        </section>
-      )}
+          {job && (
+            <section className="control-panel">
+              <button type="button" onClick={() => void postJobAction('pause')} disabled={job.paused || job.status === 'completed'}>
+                Pause
+              </button>
+              <button type="button" onClick={() => void postJobAction('resume')} disabled={!job.paused}>
+                Resume
+              </button>
+              <button type="button" onClick={() => void postJobAction('rerun-all')}>
+                Rerun All
+              </button>
+              <button type="button" onClick={() => void rerunSelectedRows()}>
+                Rerun Selected
+              </button>
+              <button type="button" onClick={() => void toggleSelectAll(true)}>
+                Select All
+              </button>
+              <button type="button" onClick={() => void toggleSelectAll(false)}>
+                Clear Selection
+              </button>
+              <button type="button" disabled={isCommitting} onClick={() => void commitSelectedRows(true)}>
+                Dry Run Save
+              </button>
+              <button type="button" disabled={isCommitting} className="primary" onClick={() => void commitSelectedRows(false)}>
+                Save Selected Rows
+              </button>
+            </section>
+          )}
 
-      {!job && (
-        <section className="empty-state">
-          <h2>No Active Ingestion Job</h2>
-          <p>Upload one of your broker CSV files to start async row interpretation with Ollama.</p>
-        </section>
+          {job && (
+            <section className="workspace-grid">
+              <article className="row-list">
+                <h2>Rows</h2>
+                <div className="row-table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Use</th>
+                        <th>Row</th>
+                        <th>Status</th>
+                        <th>Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {job.rows.map((row) => (
+                        <tr
+                          key={row.index}
+                          className={row.index === selectedRowIndex ? 'selected-row' : ''}
+                          onClick={() => setSelectedRowIndex(row.index)}
+                        >
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={row.selected}
+                              onChange={(event) => {
+                                event.stopPropagation()
+                                void toggleRowSelection(row.index, event.currentTarget.checked)
+                              }}
+                            />
+                          </td>
+                          <td>{row.index}</td>
+                          <td>
+                            <span className={`status-pill ${row.status}`}>{row.status}</span>
+                          </td>
+                          <td>{row.error || row.llm_error || row.interpretation?.summary || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article className="row-editor">
+                <h2>Input Row (Left)</h2>
+                {selectedRow ? (
+                  <>
+                    <p>
+                      Row <strong>{selectedRow.index}</strong> hash <code>{selectedRow.row_hash}</code>
+                    </p>
+                    <p>
+                      Checks: {selectedRow.checks.length === 0 ? 'none' : selectedRow.checks.join(' | ')}
+                    </p>
+                    {selectedRow.llm_error && (
+                      <p className="error-banner">LLM error: {selectedRow.llm_error}</p>
+                    )}
+                    <textarea
+                      value={rowEditorText}
+                      onChange={(event) => setRowEditorText(event.currentTarget.value)}
+                      spellCheck={false}
+                    />
+                  </>
+                ) : (
+                  <p>Select a row to edit input values.</p>
+                )}
+              </article>
+
+              <article className="result-editor">
+                <h2>Proposed Objects (Right)</h2>
+                {selectedRow ? (
+                  <>
+                    <p>
+                      AI confidence: <strong>{selectedRow.interpretation?.confidence ?? 0}</strong>
+                    </p>
+                    <div className="object-buttons">
+                      {SAMPLE_OBJECTS.map((objectType) => (
+                        <button key={objectType} type="button" onClick={() => addObjectToSelectedRow(objectType)}>
+                          + {objectType}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={resultEditorText}
+                      onChange={(event) => setResultEditorText(event.currentTarget.value)}
+                      spellCheck={false}
+                    />
+                    <div className="editor-actions">
+                      <button type="button" className="primary" onClick={() => void saveRowEdits()}>
+                        Save Row Edits
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (job) {
+                            void fetch(`/api/ingest/jobs/${job.id}/rerun-rows`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ row_indices: [selectedRow.index] })
+                            })
+                              .then((response) => response.json())
+                              .then((data: IngestJob) => setJob(data))
+                              .catch((error: unknown) => setErrorMessage(String(error)))
+                          }
+                        }}
+                      >
+                        Rerun This Row
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p>Select a row to inspect AI results.</p>
+                )}
+              </article>
+            </section>
+          )}
+
+          {commitResult && (
+            <section className="commit-result">
+              <h2>Commit Result</h2>
+              <p>
+                Report ID: <strong>{commitResult.report_id}</strong> | Selected rows: <strong>{commitResult.selected_rows}</strong>
+              </p>
+              <p>Plan valid: <strong>{String(commitResult.plan_valid)}</strong></p>
+              <pre>{JSON.stringify(commitResult, null, 2)}</pre>
+            </section>
+          )}
+
+          {!job && (
+            <section className="empty-state">
+              <h2>No Active Ingestion Job</h2>
+              <p>Upload one of your broker CSV files to start async row interpretation with Ollama.</p>
+            </section>
+          )}
+        </>
+      ) : (
+        !isLoadingDb && (
+          <section className="empty-state">
+            <h2>No Database Loaded</h2>
+            <p>Select an existing database above or create a new one to begin.</p>
+          </section>
+        )
       )}
     </main>
   )

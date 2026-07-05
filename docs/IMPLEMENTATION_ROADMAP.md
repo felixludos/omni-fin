@@ -240,6 +240,25 @@ Second real run should say no pending migrations.
 
 ---
 
+# Milestone: Clean-up interface
+
+```
+Clean up the main frontend interface somewhat, so that the top starts by printing the path to the database that is currently being used, with an option to browse to a different file, or to create a new one, with a "load/create" button.
+```
+
+Does this direction look right? A few things I want to confirm before implementing:
+1. For "browse" — should I scan cloud_data/ for .db files and present them in a dropdown, or would you prefer a different mechanism?
+2. For "create new" — should the user type a filename (like my_finance.db) that gets created in the default cloud_data/ directory, or should they enter a full path?
+3. Do you want the existing ingestion UI to stay below the DB header, or should it only appear after a DB is successfully loaded?
+
+```
+1. As a "quick" convenience, scanning cloud_data/ (by default, or a directory specified by a corresponding environment variable) for .db files and presenting them in a dropdown is fine.
+2. For "create new", the user should be able to type a filename (like my_finance.db), even without the extension (default extension is `.db`).
+3. Show the existing ingestion UI below the DB header, but disable it until a DB is successfully loaded. You should also automatically load the previously used DB if it exists, and show a message like "Loaded previous database: <filename>". So the user can directly start using the app without having to select a DB every time.
+```
+
+---
+
 # Milestone 2 — Domain model identity, lazy loading, and staged edits
 
 ## Goal
