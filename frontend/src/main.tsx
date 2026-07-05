@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import BrowsePanel from './browse'
+import AiTuningPanel from './tuning'
 import './style.css'
 
 type ProposedObjectType =
@@ -153,6 +154,7 @@ function App() {
   const [hasDb, setHasDb] = useState(false)
   const [seedWithData, setSeedWithData] = useState(true)
   const [debugMode, setDebugMode] = useState<boolean>(false)
+  const [activeView, setActiveView] = useState<'ingestion' | 'tuning'>('ingestion')
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) {
@@ -627,13 +629,32 @@ function App() {
         )}
       </header>
 
-      <h1 className="app-title">Omnifin AI Ingestion Studio</h1>
+      <nav className="app-nav">
+        <button
+          type="button"
+          className={`app-nav-btn ${activeView === 'ingestion' ? 'active' : ''}`}
+          onClick={() => setActiveView('ingestion')}
+        >
+          ⚡ Ingestion
+        </button>
+        <button
+          type="button"
+          className={`app-nav-btn ${activeView === 'tuning' ? 'active' : ''}`}
+          onClick={() => setActiveView('tuning')}
+        >
+          🎛 AI Tuning
+        </button>
+      </nav>
+
+      {activeView === 'ingestion' && <h1 className="app-title">Omnifin AI Ingestion Studio</h1>}
 
       {errorMessage && <p className="error-banner">{errorMessage}</p>}
 
-      {hasDb && <BrowsePanel dbPath={currentDb?.path} />}
+      {activeView === 'tuning' && <AiTuningPanel />}
 
-      {hasDb ? (
+      {activeView === 'ingestion' && hasDb && <BrowsePanel dbPath={currentDb?.path} />}
+
+      {activeView === 'ingestion' && hasDb && (
         <>
           <header className="topbar">
             <div>
@@ -841,13 +862,13 @@ function App() {
             </section>
           )}
         </>
-      ) : (
-        !isLoadingDb && (
-          <section className="empty-state">
-            <h2>No Database Loaded</h2>
-            <p>Select an existing database above or create a new one to begin.</p>
-          </section>
-        )
+      )}
+
+      {activeView === 'ingestion' && !hasDb && !isLoadingDb && (
+        <section className="empty-state">
+          <h2>No Database Loaded</h2>
+          <p>Select an existing database above or create a new one to begin.</p>
+        </section>
       )}
       <div
         className="debug-toggle"

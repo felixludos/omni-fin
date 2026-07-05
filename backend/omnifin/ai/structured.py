@@ -14,16 +14,56 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 
+def raw_completion(
+    prompt: str,
+    *,
+    model: str = "gemma4:31b",
+    base_url: str = "http://localhost:11434/v1",
+    api_key: str = "ollama",
+    temperature: float = 0.0,
+    max_tokens: int = 5000,
+    timeout: float = 90.0,
+) -> tuple[str, str | None]:
+    """Run a raw LLM completion and return ``(content, reasoning)``.
+
+    ``reasoning`` is ``None`` for standard models and contains the reasoning /
+    thinking trace for models that expose it (e.g. deepseek-r1).
+    """
+
+    from openai import OpenAI
+
+    client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Return only valid JSON. "
+                    "Do not include markdown fences or explanatory prose."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    msg = response.choices[0].message
+    content = msg.content or ""
+    reasoning = getattr(msg, "reasoning_content", None)
+    return content, reasoning
+
+
 def structured_completion(
     prompt: str,
     response_model: type[T],
     *,
-    model: str = "llama3.1",
+    model: str = "gemma4:31b",
     base_url: str = "http://localhost:11434/v1",
     api_key: str = "ollama",
     temperature: float = 0.0,
-    max_tokens: int = 1000,
-    timeout: float = 60.0,
+    max_tokens: int = 5000,
+    timeout: float = 90.0,
 ) -> T:
     """Return ``response_model`` parsed from a local OpenAI-compatible LLM.
 
@@ -59,11 +99,9 @@ def structured_completion(
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    # When using parse() with a Pydantic model, the validated object is on
-    # ``.parsed``, not in ``.message.content``.
-    return response.parsed if hasattr(response, "parsed") and response.parsed else response_model.model_validate_json(
-        response.choices[0].message.content or "{}"
-    )
-
-    content = response.choices[0].message.content or "{}"
+    msg = response.choices[0].message
+    content = msg.content or "{}"
+    parsed = getattr(response, "parsed", None)
+    if parsed is not None:
+        return parsed
     return response_model.model_validate_json(content)

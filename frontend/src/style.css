@@ -753,6 +753,409 @@ textarea {
   color: var(--muted);
 }
 
+/* ── Nav bar ──────────────────────────────────────────────── */
+.app-nav {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.app-nav-btn {
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  color: var(--muted);
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.app-nav-btn:hover {
+  background: var(--bg-card);
+  color: var(--text);
+  border-color: var(--accent);
+}
+.app-nav-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ── AI Tuning Layout ────────────────────────────────────── */
+.tuning-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1.4fr 1.2fr;
+  gap: 14px;
+  align-items: start;
+  margin-top: 6px;
+}
+
+.tuning-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.tuning-col-middle {
+  display: flex;
+  flex-direction: column;
+}
+
+.tuning-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tuning-panel-grow {
+  flex: 1;
+  min-height: 200px;
+}
+
+.tuning-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+}
+.tuning-panel-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.tuning-mode-btn {
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.tuning-mode-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+.tuning-panel-body-text {
+  padding: 8px 12px;
+  min-height: 500px;
+  overflow: auto;
+}
+.tuning-panel-body {
+  padding: 8px 12px;
+  overflow: auto;
+}
+.tuning-panel-body.tuning-panel-grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.tuning-panel-footer {
+  padding: 6px 12px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tuning-textarea {
+  width: 100%;
+  min-height: 200px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  resize: vertical;
+  background: var(--bg-surface);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.tuning-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.tuning-textarea-grow {
+  flex: 1;
+  min-height: 120px;
+}
+.tuning-textarea[readonly] {
+  opacity: 0.8;
+}
+
+.tuning-input {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  background: var(--bg-surface);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.tuning-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.tuning-select {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  background: var(--bg-surface);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.tuning-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 7px 18px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.1s;
+}
+.tuning-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.tuning-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+.tuning-btn.primary {
+  background: var(--accent-strong);
+}
+
+.tuning-run-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 10px 18px;
+  font-size: 0.95rem;
+}
+
+.tuning-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  padding: 8px;
+}
+
+/* Entry editor (key-value rows) */
+.tuning-entry-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tuning-entry-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.tuning-entry-input {
+  flex: 1;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  font-size: 0.75rem;
+  background: var(--bg-surface);
+  color: var(--text);
+  min-width: 0;
+}
+.tuning-entry-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.tuning-entry-sep {
+  color: var(--muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+.tuning-entry-del {
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+.tuning-entry-add {
+  background: transparent;
+  border: 1px dashed var(--line-soft);
+  color: var(--muted);
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  width: fit-content;
+}
+.tuning-entry-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Context form */
+.tuning-context-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tuning-check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.tuning-check-row input[type="checkbox"] {
+  margin: 0;
+}
+
+/* Schema list */
+.tuning-schema-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tuning-schema-item {
+  display: flex;
+  flex-direction: column;
+}
+.tuning-schema-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tuning-schema-name {
+  font-weight: 500;
+  font-size: 0.82rem;
+}
+.tuning-expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+}
+.tuning-expand-btn:hover {
+  color: var(--text);
+}
+.tuning-schema-preview {
+  background: var(--bg-surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 2px 0 4px 22px;
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Tab bar */
+.tuning-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+}
+.tuning-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.tuning-tab:hover {
+  color: var(--text);
+}
+.tuning-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+/* Hyperparameters form */
+.tuning-hyper-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tuning-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Output panel */
+.tuning-output {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tuning-output-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tuning-output-section > strong {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.tuning-output-pre {
+  background: var(--bg-surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+  margin: 0;
+}
+.tuning-validation-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+}
+.tuning-validation-ok {
+  color: var(--ok);
+}
+.tuning-validation-warn {
+  color: var(--danger);
+}
+
 .debug-toggle {
   position: fixed;
   bottom: 12px;

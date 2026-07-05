@@ -302,6 +302,16 @@ and Omnifin discovers dependencies, stages changes, plans them, and saves atomic
 
 ---
 
+```
+The AI processing in the injest step needs more attention. Specifically, I want to make sure that (1) the prompt template is written well, that (2) useful context is loaded to help the AI connect objects that are interpreted correctly, and (3) that the schemas are clear and unambiguous so that the objects can be parsed correctly. 
+
+Start by building a new "AI tuning page with a link from the homepage where on the left there are several panels to specify an input JSON object (which would be the equivalent of a row of a uploaded CSV file) as input, below that a panel connected to the database where additional context from the database can be selected to be mentioned in the prompt, and then below that the schema of all the high-level pydantic objects can be viewed and optionally selected for the prompt. Then in the middle there should be a panel with an editable (markdown) text box on top to specify the prompt template including placeholders for the various input, context, and schemas to include, and a button to fill in all the placeholders to produce the corresponding prompt that is fed in to the AI (the prompt should be viewable in other tab on that panel). On the right column there is a panel on top to set some AI call hyperparameters as a json object, including whether structured output generation should be used and for what schema. Finally there needs to be a button to run the AI call, and then see all the output (including thoughts) in the bottom right panel - with notes on whether the responses adhere to schemas of objects so that the products can be saved to the database correctly.
+
+One note on the UI: generally I would prefer structured input UIs with suitable widgets, but everywhere it should also be possible to switch to "JSON" mode which is just a textbox to set the values (such as inputs, or context, or AI call hyperparameters) to enable finer control of what is inputed at each step
+```
+
+---
+
 ### 2.1 Implement identity map correctly
 
 **Agent prompt**
