@@ -187,6 +187,7 @@ def open_database(payload: OpenDbRequest) -> DbInfoResponse:
 class CreateDbRequest(BaseModel):
     filename: str
     seed: bool = True
+    overwrite: bool = False
 
 
 @app.post("/api/db/create", response_model=DbInfoResponse)
@@ -203,11 +204,14 @@ def create_database(payload: CreateDbRequest) -> DbInfoResponse:
     db_dir.mkdir(parents=True, exist_ok=True)
     db_path_str = str(db_dir / filename)
 
-    if Path(db_path_str).exists():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Database already exists: {db_path_str}",
-        )
+    db_path = Path(db_path_str)
+    if db_path.exists():
+        if not payload.overwrite:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Database already exists: {db_path_str}",
+            )
+        db_path.unlink()  # overwrite requested — remove existing file
 
     try:
         with DatabaseSession(db_path_str) as session:

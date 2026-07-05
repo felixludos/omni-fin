@@ -462,11 +462,20 @@ function App() {
           setIsLoadingDb(false)
           return
         }
+        let overwrite = false
         response = await fetch('/api/db/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: name, seed: seedWithData }),
+          body: JSON.stringify({ filename: name, seed: seedWithData, overwrite }),
         })
+        if (response.status === 409 && window.confirm(`Database "${name}" already exists. Overwrite it?`)) {
+          overwrite = true
+          response = await fetch('/api/db/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: name, seed: seedWithData, overwrite }),
+          })
+        }
       }
       if (!response.ok) {
         const text = await response.text()

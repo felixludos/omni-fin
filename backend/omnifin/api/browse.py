@@ -20,10 +20,6 @@ DB_ENV = "OMNIFIN_DB"
 
 
 def _db_path() -> str:
-    import os
-    configured = os.environ.get(DB_ENV)
-    if configured:
-        return configured
     from omnifin.api.server import db_path as server_db_path
     return server_db_path()
 

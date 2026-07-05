@@ -263,6 +263,20 @@ Does this direction look right? A few things I want to confirm before implementi
 Below the loading database panel and above the injestion panel, there should be a "Browse Database" panel, which shows the contents of the database in nicely formatted tables including a tab for each of the main objects. There should be a toggle to switch between the "low-level" data view (showing the data with minimal inferences and transformations) and the "high-level" domain view (showing the data as it would be represented in the Python domain model). The user should be able to click on any object to see its details, including related objects, tags, comments, and events. There should also be a search bar to filter objects by name, symbol, or other relevant fields.
 ```
 
+```
+When creating a database and seeding it with the cloud_data/seed_data/* make sure that both assets and investments are processed correctly such that tags and comments of appropriate types/categories are created and linked to the correct objects to ensure that the seeded data is fully functional and can be used for testing and demonstration purposes. Obviously these more specialized fields that are attached by comments/tags should only be included if the data is values are not null.
+
+Note that for investments the datatypes should be:
+- built-in to `assets` table: symbol, name, category
+- nyse_ticker: comment with type="nyse_ticker"
+- ibkr_ticker: comment with type="ibkr_ticker"
+- identifier: comment with type="asset_identifier"
+- identifier_type: tag with type="asset_identifier_type" (with values like "cusip", "isin", etc.)
+- country: tag with type="country" (with values like "US", "DE", etc.)
+- fund_type: tag with type="fund_type" (with values like "etf", "mutual_fund", "index_fund", "real_estate_fund", "other_fund")
+- fund_focus: tag with type="fund_focus" (with values like "equity_heavy", "mixed", "other_fund", "german_real_estate_fund", "real_estate_fund")
+```
+
 ---
 
 # Milestone 2 — Domain model identity, lazy loading, and staged edits
