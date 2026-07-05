@@ -1,0 +1,11 @@
+# Core Runtime Dependencies
+click
+fastapi
+openai
+pydantic
+uvicorn[standard]
+
+# Development & Testing Dependencies
+pytest
+httpx
+ruff

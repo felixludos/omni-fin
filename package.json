@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "concurrently -n backend,frontend -c auto \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && python -m omnifin.cli.main serve --db ../data/omnifin.db --reload",
+    "dev:backend": "cd backend && uv run python -m omnifin.cli.main serve --db ../data/omnifin.db --reload",
     "dev:frontend": "npm --prefix frontend run dev",
     "test:backend": "cd backend && python -m pytest",
     "install:backend": "python -m pip install -e backend"
