@@ -108,7 +108,7 @@ def tax_command(db_path: str, jurisdiction: str, tax_year: int) -> None:
 @cli.command("serve")
 @click.option("--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path.")
 @click.option("--host", default="127.0.0.1", show_default=True)
-@click.option("--port", default=8000, show_default=True)
+@click.option("--port", default=8100, show_default=True)
 @click.option("--reload/--no-reload", default=True, show_default=True)
 def serve_command(db_path: str, host: str, port: int, reload: bool) -> None:
     """Start the FastAPI backend server."""
