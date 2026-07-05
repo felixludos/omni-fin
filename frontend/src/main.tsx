@@ -161,7 +161,7 @@ function App() {
   const [hasDb, setHasDb] = useState(false)
   const [seedWithData, setSeedWithData] = useState(true)
   const [debugMode, setDebugMode] = useState<boolean>(false)
-  const [activeView, setActiveView] = useState<'ingestion' | 'tuning' | 'invest-parse'>('ingestion')
+  const [activeView, setActiveView] = useState<'ingestion' | 'tuning' | 'invest-parse'>('invest-parse')
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b')
 

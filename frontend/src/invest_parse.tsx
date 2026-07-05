@@ -63,23 +63,6 @@ type InvestmentGroup = {
   confidence: number
 }
 
-type CommitResponse = {
-  report_id: string
-  selected_rows: number
-  plan_valid: boolean
-  inserts: Record<string, number>
-  updates: Record<string, number>
-  unchanged: Record<string, number>
-  errors: string[]
-}
-
-type AccountInfo = {
-  id: string
-  name?: string | null
-  type?: string | null
-  institution?: string | null
-}
-
 type ModelInfo = {
   name: string
   size: number
@@ -90,29 +73,18 @@ function toJsonSafe(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-function objectToCsv(data: Record<string, string>[]): string {
-  if (data.length === 0) return ''
-  const headers = Object.keys(data[0])
-  const rows = data.map(row => headers.map(h => `"${String(row[h]).replace(/"/g, '""')}"`).join(','))
-  return [headers.join(','), ...rows].join('\n')
-}
-
 export default function InvestParsePanel() {
   const [job, setJob] = useState<InvestParseJob | null>(null)
-  const [accounts, setAccounts] = useState<AccountInfo[]>([])
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
   const [fileName, setFileName] = useState<string>('')
   const [isUploading, setIsUploading] = useState<boolean>(false)
   const [isCommitting, setIsCommitting] = useState<boolean>(false)
   const [statusMessage, setStatusMessage] = useState<string>('Upload a CSV to start Investment Asset Parsing')
   const [errorMessage, setErrorMessage] = useState<string>('')
-  const [commitResult, setCommitResult] = useState<CommitResponse | null>(null)
   const [existingSymbols, setExistingSymbols] = useState<string[]>([])
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('gemma4:31b')
   const [temperature, setTemperature] = useState<number>(0.6)
-  const [batchProcessing, setBatchProcessing] = useState<boolean>(true)
   const [groupingStatus, setGroupingStatus] = useState<'idle' | 'grouping'>('idle')
   const [groupColumn, setGroupColumn] = useState<string>('Symbol(CUSIP)')
 
@@ -121,7 +93,6 @@ export default function InvestParsePanel() {
     return job.rows.find((row) => row.index === selectedRowIndex) ?? null
   }, [job, selectedRowIndex])
 
-  const [investmentEditorText, setInvestmentEditorText] = useState<string>('{}')
   const [dbReady, setDbReady] = useState<boolean>(false)
   const [dbLoading, setDbLoading] = useState<boolean>(true)
 
@@ -139,25 +110,10 @@ export default function InvestParsePanel() {
   }, [])
 
   useEffect(() => {
-    if (!selectedRow?.interpretation?.result) {
-      setInvestmentEditorText('{}')
-      return
-    }
-    setInvestmentEditorText(toJsonSafe(selectedRow.interpretation.result))
-  }, [selectedRowIndex, selectedRow?.interpretation])
-
-  useEffect(() => {
     fetch('/api/invest-parse/symbols')
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
       .then((s: string[]) => setExistingSymbols(s))
       .catch((e) => setErrorMessage(String(e)))
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/accounts')
-      .then((r) => r.json())
-      .then((accounts: AccountInfo[]) => setAccounts(accounts))
-      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -199,7 +155,6 @@ export default function InvestParsePanel() {
   const uploadCsv = async (file: File): Promise<void> => {
     setIsUploading(true)
     setErrorMessage('')
-    setCommitResult(null)
     try {
       const csvText = await file.text()
       const body: Record<string, unknown> = {
@@ -208,9 +163,6 @@ export default function InvestParsePanel() {
         temperature: temperature,
         model: selectedModel,
         base_url: 'http://localhost:11434/v1'
-      }
-      if (selectedAccountId) {
-        body.account_id = selectedAccountId
       }
       const response = await fetch('/api/invest-parse/jobs', {
         method: 'POST',
@@ -234,7 +186,6 @@ export default function InvestParsePanel() {
 
   const loadExampleFile = async (): Promise<void> => {
     setErrorMessage('')
-    setCommitResult(null)
     try {
       const response = await fetch('/api/invest-parse/examples/load', {
         method: 'POST',
@@ -250,7 +201,6 @@ export default function InvestParsePanel() {
       setSelectedRowIndex(data.rows.length > 0 ? data.rows[0].index : null)
       setStatusMessage(`Debug: loaded "${data.filename}" with ${data.rows.length} rows (paused)`)
       
-      // Update job with selected model settings
       if (data.id && (selectedModel !== data.model || temperature !== data.temperature)) {
         const updateResponse = await fetch(`/api/invest-parse/jobs/${data.id}`, {
           method: 'PATCH',
@@ -288,41 +238,6 @@ export default function InvestParsePanel() {
     }
   }
 
-  const postJobAction = async (action: 'pause' | 'resume' | 'rerun-all'): Promise<void> => {
-    if (!job) return
-    setErrorMessage('')
-    try {
-      const response = await fetch(`/api/invest-parse/jobs/${job.id}/${action}`, { method: 'POST' })
-      if (!response.ok) throw new Error(await response.text())
-      const data = (await response.json()) as InvestParseJob
-      setJob(data)
-    } catch (error) {
-      setErrorMessage(String(error))
-    }
-  }
-
-  const rerunSelectedRows = async (): Promise<void> => {
-    if (!job) return
-    const selectedIndices = job.rows.filter((row) => row.selected).map((row) => row.index)
-    if (selectedIndices.length === 0) {
-      setErrorMessage('Select at least one row to rerun')
-      return
-    }
-    setErrorMessage('')
-    try {
-      const response = await fetch(`/api/invest-parse/jobs/${job.id}/rerun-rows`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ row_indices: selectedIndices })
-      })
-      if (!response.ok) throw new Error(await response.text())
-      const data = (await response.json()) as InvestParseJob
-      setJob(data)
-    } catch (error) {
-      setErrorMessage(String(error))
-    }
-  }
-
   const rerunSingleRow = async (rowIndex: number): Promise<void> => {
     if (!job) return
     setErrorMessage('')
@@ -340,24 +255,11 @@ export default function InvestParsePanel() {
     }
   }
 
-  const toggleSelectAll = async (selected: boolean): Promise<void> => {
-    if (!job) return
-    setErrorMessage('')
-    for (const row of job.rows) {
-      try {
-        await patchRow(row.index, { selected })
-      } catch (error) {
-        setErrorMessage(String(error))
-        break
-      }
-    }
-  }
-
   const patchRow = async (
     rowIndex: number,
     payload: {
       edited_row?: Record<string, string>
-      interpretation?: ParseResult
+      interpretation?: { summary: string; confidence: number; result: InvestmentParseResult }
       selected?: boolean
     }
   ): Promise<void> => {
@@ -378,87 +280,23 @@ export default function InvestParsePanel() {
     })
   }
 
-  const saveRowEdits = async (): Promise<void> => {
-    if (!selectedRow) return
-    setErrorMessage('')
-    try {
-      const parsed = JSON.parse(investmentEditorText) as InvestmentParseResult
-      await patchRow(selectedRow.index, {
-        interpretation: {
-          summary: selectedRow.interpretation?.summary || '',
-          confidence: selectedRow.interpretation?.confidence || 0,
-          result: parsed
-        }
-      })
-      setStatusMessage(`Saved edits for row ${selectedRow.index}`)
-    } catch (error) {
-      setErrorMessage(String(error))
-    }
-  }
-
-  const toggleRowSelection = async (rowIndex: number, selected: boolean): Promise<void> => {
-    setErrorMessage('')
-    try {
-      await patchRow(rowIndex, { selected })
-    } catch (error) {
-      setErrorMessage(String(error))
-    }
-  }
-
-  const commitSelectedRows = async (dryRun: boolean): Promise<void> => {
-    if (!job) return
+  const commitSelectedRows = async (): Promise<void> => {
+    if (!job || selectedRowIndex === null) return
     setIsCommitting(true)
     setErrorMessage('')
     try {
-      const selected = job.rows.filter((row) => row.selected).map((row) => row.index)
       const response = await fetch(`/api/invest-parse/jobs/${job.id}/commit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ row_indices: selected, dry_run: dryRun })
+        body: JSON.stringify({ row_indices: [selectedRowIndex], dry_run: false })
       })
       if (!response.ok) throw new Error(await response.text())
-      const data = (await response.json()) as CommitResponse
-      setCommitResult(data)
-      setStatusMessage(dryRun ? 'Dry run completed' : 'Saved selected rows to database')
+      setStatusMessage('Saved selected row to database')
     } catch (error) {
       setErrorMessage(String(error))
     } finally {
       setIsCommitting(false)
     }
-  }
-
-  const downloadResults = (): void => {
-    if (!job) return
-    const selectedRows = job.rows.filter((row) => row.selected && row.interpretation?.result)
-    if (selectedRows.length === 0) {
-      setErrorMessage('No rows to download')
-      return
-    }
-    const csvData = selectedRows.map((row) => {
-      const result = row.interpretation!.result!
-      const base: Record<string, string> = {
-        row_index: String(row.index),
-        source_hash: row.row_hash,
-        status: result.status,
-        symbol: result.symbol || '',
-      }
-      if (result.investment) {
-        for (const [key, value] of Object.entries(result.investment)) {
-          if (value !== null && value !== undefined) {
-            base[key] = String(value)
-          }
-        }
-      }
-      return base
-    })
-    const csv = objectToCsv(csvData)
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `investment_parse_${Date.now()}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const processedCount = job ? job.rows.filter((row) => row.status === 'processed').length : 0
@@ -512,32 +350,7 @@ export default function InvestParsePanel() {
                   onChange={(event) => setTemperature(parseFloat(event.currentTarget.value))}
                 />
               </div>
-              <label className="account-selector">
-                <input
-                  type="checkbox"
-                  checked={batchProcessing}
-                  onChange={(event) => setBatchProcessing(event.currentTarget.checked)}
-                />
-                <span>Batch Process</span>
-              </label>
-              {accounts.length > 0 && (
-                <div className="account-selector">
-                  <label htmlFor="source-account">Source Account:</label>
-                  <select
-                    id="source-account"
-                    value={selectedAccountId}
-                    onChange={(event) => setSelectedAccountId(event.currentTarget.value)}
-                  >
-                    <option value="">— No source account —</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name || 'Unnamed'} ({account.type ? account.type : ''}){account.institution ? ` — ${account.institution}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <p>{statusMessage}</p>
+              {errorMessage && <p className="error-banner">{errorMessage}</p>}
               {job && (
                 <p>
                   File: <strong>{job.filename || fileName}</strong> | Rows: <strong>{job.rows.length}</strong> |
@@ -570,19 +383,8 @@ export default function InvestParsePanel() {
             </div>
           </header>
 
-          {errorMessage && <p className="error-banner">{errorMessage}</p>}
-
           {job && (
             <section className="control-panel">
-              <button type="button" onClick={() => void postJobAction('pause')} disabled={job.paused || job.status === 'completed'}>
-                Pause
-              </button>
-              <button type="button" onClick={() => void postJobAction('resume')} disabled={!job.paused}>
-                Resume
-              </button>
-              <button type="button" onClick={() => void postJobAction('rerun-all')}>
-                Rerun All
-              </button>
               <div className="column-selector">
                 <label htmlFor="group-column">Group by:</label>
                 <select
@@ -600,23 +402,13 @@ export default function InvestParsePanel() {
               <button type="button" onClick={() => void groupRows()} disabled={groupingStatus === 'grouping'}>
                 {groupingStatus === 'grouping' ? 'Grouping...' : 'Group Rows'}
               </button>
-              <button type="button" onClick={() => void toggleSelectAll(true)}>
-                Select All
-              </button>
-              <button type="button" onClick={() => void toggleSelectAll(false)}>
-                Clear Selection
-              </button>
-              <button type="button" disabled={isCommitting} onClick={() => void commitSelectedRows(true)}>
-                Dry Run Save
-              </button>
-              <button type="button" disabled={isCommitting} className="primary" onClick={() => void commitSelectedRows(false)}>
+              <button type="button" disabled={isCommitting} onClick={() => commitSelectedRows()}>
                 Save Selected Rows
-              </button>
-              <button type="button" disabled={isCommitting} onClick={downloadResults}>
-                Download CSV
               </button>
             </section>
           )}
+
+          {errorMessage && <p className="error-banner">{errorMessage}</p>}
 
           {job && (
             <section className="workspace-grid">
@@ -686,7 +478,6 @@ export default function InvestParsePanel() {
                     <table>
                       <thead>
                         <tr>
-                          <th>Use</th>
                           <th>Row</th>
                           <th>Status</th>
                           <th>Summary</th>
@@ -700,16 +491,6 @@ export default function InvestParsePanel() {
                             className={row.index === selectedRowIndex ? 'selected-row' : ''}
                             onClick={() => setSelectedRowIndex(row.index)}
                           >
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={row.selected}
-                                onChange={(event) => {
-                                  event.stopPropagation()
-                                  void toggleRowSelection(row.index, event.currentTarget.checked)
-                                }}
-                              />
-                            </td>
                             <td>{row.index}</td>
                             <td>
                               <span className={`status-pill ${row.status}`}>{row.status}</span>
@@ -739,8 +520,9 @@ export default function InvestParsePanel() {
                     )}
                     <textarea
                       value={toJsonSafe(selectedRow.edited_row)}
-                      onChange={(event) => setInvestmentEditorText(event.currentTarget.value)}
+                      onChange={(event) => {}}
                       spellCheck={false}
+                      readOnly
                     />
                     <button type="button" className="primary" onClick={() => {
                       if (selectedRow) {
@@ -772,14 +554,11 @@ export default function InvestParsePanel() {
                     )}
                     {selectedRow.interpretation.result.status === 'new' && selectedRow.interpretation.result.investment && (
                       <div className="investment-editor-container">
-                        <textarea
-                          value={investmentEditorText}
-                          onChange={(event) => setInvestmentEditorText(event.currentTarget.value)}
-                          spellCheck={false}
-                        />
-                        <button type="button" className="primary" onClick={saveRowEdits}>
-                          Save Investment Edits
-                        </button>
+                        <p>
+                          <strong>New Investment:</strong> {selectedRow.interpretation.result.investment.symbol} - {selectedRow.interpretation.result.investment.name}
+                        </p>
+                        <p>Category: {selectedRow.interpretation.result.investment.category}</p>
+                        <p>Will be created on commit</p>
                       </div>
                     )}
                   </>
@@ -788,17 +567,6 @@ export default function InvestParsePanel() {
                   <p>Select a processed row to view investment results.</p>
                 ) : null}
               </article>
-            </section>
-          )}
-
-          {commitResult && (
-            <section className="commit-result">
-              <h2>Commit Result</h2>
-              <p>
-                Report ID: <strong>{commitResult.report_id}</strong> | Selected rows: <strong>{commitResult.selected_rows}</strong>
-              </p>
-              <p>Plan valid: <strong>{String(commitResult.plan_valid)}</strong></p>
-              <pre>{JSON.stringify(commitResult, null, 2)}</pre>
             </section>
           )}
 
