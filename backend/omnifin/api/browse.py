@@ -185,7 +185,7 @@ def _fetch_comments(conn: sqlite3.Connection, junction_table: str, owner_column:
 
 def _build_low_row(spec: dict, row: sqlite3.Row) -> dict[str, Any]:
     raw = dict(row)
-    return {spec["low_columns"][i]: _hex(raw.get(col)) if i > 0 else raw.get(col)
+    return {spec["low_columns"][i]: _hex(raw.get(col))
             for i, col in enumerate(spec["low_columns"])}
 
 
