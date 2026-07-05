@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import BrowsePanel from './browse'
 import './style.css'
 
 type ProposedObjectType =
@@ -579,6 +580,8 @@ function App() {
       <h1 className="app-title">Omnifin AI Ingestion Studio</h1>
 
       {errorMessage && <p className="error-banner">{errorMessage}</p>}
+
+      {hasDb && <BrowsePanel dbPath={currentDb?.path} />}
 
       {hasDb ? (
         <>

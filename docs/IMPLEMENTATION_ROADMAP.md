@@ -257,6 +257,12 @@ Does this direction look right? A few things I want to confirm before implementi
 3. Show the existing ingestion UI below the DB header, but disable it until a DB is successfully loaded. You should also automatically load the previously used DB if it exists, and show a message like "Loaded previous database: <filename>". So the user can directly start using the app without having to select a DB every time.
 ```
 
+## Browse Database
+
+```
+Below the loading database panel and above the injestion panel, there should be a "Browse Database" panel, which shows the contents of the database in nicely formatted tables including a tab for each of the main objects. There should be a toggle to switch between the "low-level" data view (showing the data with minimal inferences and transformations) and the "high-level" domain view (showing the data as it would be represented in the Python domain model). The user should be able to click on any object to see its details, including related objects, tags, comments, and events. There should also be a search bar to filter objects by name, symbol, or other relevant fields.
+```
+
 ---
 
 # Milestone 2 — Domain model identity, lazy loading, and staged edits

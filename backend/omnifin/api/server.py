@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
+from omnifin.api.browse import router as browse_router
 from omnifin.api.ingest import router as ingest_router
 from omnifin.core.db import DatabaseSession
 from omnifin.models import Account, Asset, Investment, InvestmentSale, Report, Statement, Transfer
@@ -23,6 +24,7 @@ _current_db_path: str | None = None
 
 app = FastAPI(title="Omnifin API", version="0.1.0")
 app.include_router(ingest_router)
+app.include_router(browse_router)
 
 # Allow frontend dev server to proxy requests without CORS issues.
 app.add_middleware(
