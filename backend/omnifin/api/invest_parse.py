@@ -69,6 +69,8 @@ class InvestParseJob(BaseModel):
     status: Literal["running", "paused", "completed", "error"] = "running"
     rows: list[RowState]
     temperature: float = 0.6
+    model: str = "gemma4:31b"
+    base_url: str = "http://localhost:11434/v1"
 
 
 class CreateJobRequest(BaseModel):
