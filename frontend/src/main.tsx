@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import BrowsePanel from './browse'
 import AiTuningPanel from './tuning'
+import InvestParsePanel from './invest_parse'
 import './style.css'
 
 type ProposedObjectType =
@@ -154,7 +155,7 @@ function App() {
   const [hasDb, setHasDb] = useState(false)
   const [seedWithData, setSeedWithData] = useState(true)
   const [debugMode, setDebugMode] = useState<boolean>(false)
-  const [activeView, setActiveView] = useState<'ingestion' | 'tuning'>('ingestion')
+  const [activeView, setActiveView] = useState<'ingestion' | 'tuning' | 'invest-parse'>('ingestion')
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) {
@@ -644,6 +645,13 @@ function App() {
         >
           🎛 AI Tuning
         </button>
+        <button
+          type="button"
+          className={`app-nav-btn ${activeView === 'invest-parse' ? 'active' : ''}`}
+          onClick={() => setActiveView('invest-parse')}
+        >
+          📊 Invest Parse
+        </button>
       </nav>
 
       {activeView === 'ingestion' && <h1 className="app-title">Omnifin AI Ingestion Studio</h1>}
@@ -651,6 +659,8 @@ function App() {
       {errorMessage && <p className="error-banner">{errorMessage}</p>}
 
       {activeView === 'tuning' && <AiTuningPanel />}
+      
+      {activeView === 'invest-parse' && <InvestParsePanel />}
 
       {activeView === 'ingestion' && hasDb && <BrowsePanel dbPath={currentDb?.path} />}
 

@@ -63,7 +63,7 @@ class RunTuningRequest(BaseModel):
     model: str = "gemma4:31b"
     base_url: str = "http://localhost:11434/v1"
     temperature: float = 0.0
-    max_tokens: int = 5000
+    max_tokens: int = 8000
     response_schema: Optional[str] = None
 
 

@@ -1186,16 +1186,156 @@ textarea {
 }
 
 @media (max-width: 1200px) {
-  .workspace-grid {
-    grid-template-columns: 1fr;
-  }
+   .workspace-grid {
+     grid-template-columns: 1fr;
+   }
 
-  textarea {
-    min-height: 36vh;
-  }
+   textarea {
+     min-height: 36vh;
+   }
 
-  .detail-panel {
-    max-width: 100%;
-    margin: 10px;
-  }
-}
+   .detail-panel {
+     max-width: 100%;
+     margin: 10px;
+   }
+ }
+
+ /* ── Investment Parse Panel ───────────────────────────────────── */
+
+ .invest-panel {
+   background: var(--bg-card);
+   border: 1px solid var(--line-soft);
+   border-radius: 8px;
+   display: flex;
+   flex-direction: column;
+   overflow: hidden;
+   margin-bottom: 16px;
+ }
+
+ .invest-panel-header {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   padding: 8px 12px;
+   border-bottom: 1px solid var(--line-soft);
+   background: var(--bg-surface);
+ }
+
+ .invest-panel-title {
+   font-size: 0.8rem;
+   font-weight: 600;
+   text-transform: uppercase;
+   letter-spacing: 0.04em;
+   color: var(--muted);
+ }
+
+ .invest-panel-body {
+   padding: 12px;
+   overflow: auto;
+ }
+
+ .invest-error {
+   color: var(--danger);
+   font-size: 0.85rem;
+   padding: 8px;
+   background: #fff1eb;
+   border: 1px solid #f2a17f;
+   border-radius: 12px;
+ }
+
+ .invest-context {
+   margin-bottom: 16px;
+ }
+
+ .invest-context h3 {
+   margin: 0 0 8px;
+   font-size: 0.9rem;
+   color: var(--text);
+ }
+
+ .invest-symbols-list {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 6px;
+ }
+
+ .invest-symbol-pill {
+   display: inline-flex;
+   align-items: center;
+   padding: 2px 10px;
+   border-radius: 999px;
+   font-size: 0.75rem;
+   font-weight: 600;
+   background: #ecf6f0;
+   color: #1d6d43;
+ }
+
+ .invest-symbol-count {
+   font-size: 0.75rem;
+   color: var(--muted);
+   padding: 2px 6px;
+ }
+
+ .invest-hyper-params {
+   padding-top: 8px;
+   border-top: 1px solid var(--line-soft);
+ }
+
+ .invest-hyper-params h3 {
+   margin: 0 0 8px;
+   font-size: 0.85rem;
+   color: var(--text);
+ }
+
+ .invest-editor {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+ }
+
+ .invest-editor-row {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+ }
+
+ .invest-editor-row label {
+   font-size: 0.75rem;
+   color: var(--muted);
+ }
+
+ .invest-input, .invest-select {
+   padding: 6px 8px;
+   border-radius: 6px;
+   border: 1px solid var(--line-soft);
+   background: var(--bg-surface);
+   font-family: 'Space Grotesk', sans-serif;
+   font-size: 0.8rem;
+   color: var(--text);
+   width: 100%;
+   box-sizing: border-box;
+ }
+
+ .invest-input:focus, .invest-select:focus {
+   outline: none;
+   border-color: var(--accent);
+   box-shadow: 0 0 0 2px rgba(10, 147, 150, 0.2);
+ }
+
+ .invest-select {
+   min-height: 32px;
+ }
+
+ /* Investment parse workspace layout (when fully implemented) */
+ .invest-workspace-grid {
+   display: grid;
+   grid-template-columns: 1.1fr 1fr 1fr;
+   gap: 12px;
+   min-height: 68vh;
+ }
+
+ @media (max-width: 1200px) {
+   .invest-workspace-grid {
+     grid-template-columns: 1fr;
+   }
+ }

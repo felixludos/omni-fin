@@ -308,6 +308,63 @@ The AI processing in the injest step needs more attention. Specifically, I want 
 Start by building a new "AI tuning page with a link from the homepage where on the left there are several panels to specify an input JSON object (which would be the equivalent of a row of a uploaded CSV file) as input, below that a panel connected to the database where additional context from the database can be selected to be mentioned in the prompt, and then below that the schema of all the high-level pydantic objects can be viewed and optionally selected for the prompt. Then in the middle there should be a panel with an editable (markdown) text box on top to specify the prompt template including placeholders for the various input, context, and schemas to include, and a button to fill in all the placeholders to produce the corresponding prompt that is fed in to the AI (the prompt should be viewable in other tab on that panel). On the right column there is a panel on top to set some AI call hyperparameters as a json object, including whether structured output generation should be used and for what schema. Finally there needs to be a button to run the AI call, and then see all the output (including thoughts) in the bottom right panel - with notes on whether the responses adhere to schemas of objects so that the products can be saved to the database correctly.
 
 One note on the UI: generally I would prefer structured input UIs with suitable widgets, but everywhere it should also be possible to switch to "JSON" mode which is just a textbox to set the values (such as inputs, or context, or AI call hyperparameters) to enable finer control of what is inputed at each step
+
+The structured output generation in the AI tuning page of the  seems to be failing so it might not be implemented correctly or the hyperparameters need to be set differently. Here's the current error: Structured output failed: Could not parse response content as the length limit was reached - CompletionUsage(completion_tokens=10000, prompt_tokens=5603, total_tokens=15603, completion_tokens_details=None, prompt_tokens_details=None)
+```
+
+example inputs
+
+```json
+{
+  "Symbol(CUSIP)": "COST(22160K105)",
+  "Security description": "COSTCO WHOLESALE CORP COM",
+  "Date acquired": "2025-02-20",
+  "Date sold": "2025-02-27",
+  "Quantity": "0.026",
+  "Cost basis": "$27.49",
+  "Proceeds": "$26.93",
+  "Short-term gain/loss": " -$0.56",
+  "Long-term gain/loss": " --",
+  "None": "['']"
+}
+```
+
+```json
+{
+  "Symbol(CUSIP)": "FZROX(31635T708)",
+  "Security description": "FIDELITY ZERO TOTAL MARKET INDEX",
+  "Date acquired": "Various",
+  "Date sold": "2025-02-03",
+  "Quantity": "240.154",
+  "Cost basis": "$4,096.98",
+  "Proceeds": "$5,000.00",
+  "Short-term gain/loss": " --",
+  "Long-term gain/loss": "$903.02",
+  "None": "['']"
+}
+```
+
+```json
+{
+  "Symbol(CUSIP)": "SPY(78462F103)",
+  "Security description": "STATE STREET SPDR S&P 500 ETF UNITS",
+  "Date acquired": "2024-11-18",
+  "Date sold": "2025-01-15",
+  "Quantity": "17",
+  "Cost basis": "$9,999.23",
+  "Proceeds": "$10,078.91",
+  "Short-term gain/loss": "$79.68",
+  "Long-term gain/loss": " --",
+  "None": "['']"
+}
+```
+
+### Extract investments service
+
+```
+Design and implement a new service for parsing investment assets,which should become a new panel like the ingestion and the AI tuning services. This should be a multi-step process where first a CSV file is uploaded, then (with a panel for some basic AI hyperparameters) the AI is called on each row to extract what investment was involved in a series of prompts, and then the results are displayed in a table with the ability to edit each row and then save the results to the database. The prompting protocol should be as follows:
+Given the input row (displayed as a JSON object), and a basic list of all existing assets in the database (using only their symbols), the prompt should ask whether "the investment involved in this transaction is already known or if it is a new investment that needs to be added to the database". If it is already known, the AI should return the symbol of the existing asset. If it is a new investment, the AI should return a JSON object with all the fields needed to create a new investment asset in the database, including the symbol, name, category, nyse_ticker, ibkr_ticker, identifier, identifier_type, country, fund_type, and fund_focus. Make sure to provide context on how these fields are used in the database and what values are expected for each field (including examples)
+Other than that the rows should be processed similarly to the existing ingestion service, with the ability to edit the AI output and save it to the database. The user should also be able to download the results as a CSV file for further analysis or record-keeping.
 ```
 
 ---

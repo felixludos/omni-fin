@@ -21,7 +21,7 @@ def raw_completion(
     base_url: str = "http://localhost:11434/v1",
     api_key: str = "ollama",
     temperature: float = 0.0,
-    max_tokens: int = 5000,
+    max_tokens: int = 16384,
     timeout: float = 90.0,
 ) -> tuple[str, str | None]:
     """Run a raw LLM completion and return ``(content, reasoning)``.
@@ -62,7 +62,7 @@ def structured_completion(
     base_url: str = "http://localhost:11434/v1",
     api_key: str = "ollama",
     temperature: float = 0.0,
-    max_tokens: int = 5000,
+    max_tokens: int = 16384,
     timeout: float = 90.0,
 ) -> T:
     """Return ``response_model`` parsed from a local OpenAI-compatible LLM.
