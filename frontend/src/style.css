@@ -753,6 +753,35 @@ textarea {
   color: var(--muted);
 }
 
+.debug-toggle {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 1000;
+  background: #333;
+  color: #ccc;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.debug-toggle:hover {
+  opacity: 1;
+}
+.debug-toggle[aria-checked="true"] {
+  background: #2a5;
+  color: #fff;
+  opacity: 0.85;
+}
+.debug-toggle[aria-checked="true"]:hover {
+  opacity: 1;
+}
+
 @media (max-width: 1200px) {
   .workspace-grid {
     grid-template-columns: 1fr;

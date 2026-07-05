@@ -88,6 +88,11 @@ class CreateJobRequest(BaseModel):
     account_id: Optional[str] = None
 
 
+class LoadExampleRequest(BaseModel):
+    filename: str
+    account_id: Optional[str] = None
+
+
 class UpdateRowRequest(BaseModel):
     edited_row: dict[str, str] | None = None
     interpretation: RowInterpretation | None = None
@@ -199,6 +204,30 @@ class IngestionJobManager:
         async with self._lock:
             self._jobs[job.id] = job
             self._ensure_task_locked(job.id)
+        return job
+
+    async def load_example(self, payload: LoadExampleRequest) -> IngestJob:
+        example_dir = REPO_ROOT / "cloud_data" / "examples"
+        file_path = example_dir / payload.filename
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Example file '{payload.filename}' not found in {example_dir}",
+            )
+
+        csv_text = file_path.read_text(encoding="utf-8")
+        create_payload = CreateJobRequest(
+            filename=payload.filename,
+            csv_text=csv_text,
+            account_id=payload.account_id,
+        )
+        job = await self.create_job(create_payload)
+
+        async with self._lock:
+            job.paused = True
+            job.status = "paused"
+            job.updated_at = utcnow()
+
         return job
 
     async def get_job(self, job_id: str) -> IngestJob:
@@ -811,6 +840,11 @@ async def list_accounts() -> list[AccountInfo]:
 @router.post("/jobs", response_model=IngestJob)
 async def create_ingest_job(payload: CreateJobRequest) -> IngestJob:
     return await manager.create_job(payload)
+
+
+@router.post("/examples/load", response_model=IngestJob)
+async def load_example_job(payload: LoadExampleRequest) -> IngestJob:
+    return await manager.load_example(payload)
 
 
 @router.get("/jobs/{job_id}", response_model=IngestJob)

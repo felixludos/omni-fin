@@ -152,6 +152,7 @@ function App() {
   const [dbMessage, setDbMessage] = useState('')
   const [hasDb, setHasDb] = useState(false)
   const [seedWithData, setSeedWithData] = useState(true)
+  const [debugMode, setDebugMode] = useState<boolean>(false)
 
   const selectedRow = useMemo(() => {
     if (!job || selectedRowIndex === null) {
@@ -226,6 +227,12 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (debugMode && hasDb && !job) {
+      void loadExampleFile()
+    }
+  }, [debugMode])
+
+  useEffect(() => {
     if (!hasDb || !job) {
       return
     }
@@ -293,6 +300,28 @@ function App() {
       }
       const data = (await response.json()) as IngestJob
       setJob(data)
+    } catch (error) {
+      setErrorMessage(String(error))
+    }
+  }
+
+  const loadExampleFile = async (): Promise<void> => {
+    setErrorMessage('')
+    setCommitResult(null)
+    try {
+      const response = await fetch('/api/ingest/examples/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'fidelity_sales.csv', account_id: selectedAccountId || undefined })
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      const data = (await response.json()) as IngestJob
+      setFileName(data.filename)
+      setJob(data)
+      setSelectedRowIndex(data.rows.length > 0 ? data.rows[0].index : null)
+      setStatusMessage(`Debug: loaded "${data.filename}" with ${data.rows.length} rows (paused)`)
     } catch (error) {
       setErrorMessage(String(error))
     }
@@ -820,6 +849,16 @@ function App() {
           </section>
         )
       )}
+      <div
+        className="debug-toggle"
+        role="switch"
+        aria-checked={debugMode}
+        tabIndex={0}
+        onClick={() => setDebugMode((prev) => !prev)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDebugMode((prev) => !prev) }}
+      >
+        Debug: {debugMode ? 'ON' : 'OFF'}
+      </div>
     </main>
   )
 }
