@@ -249,6 +249,19 @@ export default function InvestParsePanel() {
       setJob(data)
       setSelectedRowIndex(data.rows.length > 0 ? data.rows[0].index : null)
       setStatusMessage(`Debug: loaded "${data.filename}" with ${data.rows.length} rows (paused)`)
+      
+      // Update job with selected model settings
+      if (data.id && (selectedModel !== data.model || temperature !== data.temperature)) {
+        const updateResponse = await fetch(`/api/invest-parse/jobs/${data.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: selectedModel, temperature: temperature })
+        })
+        if (updateResponse.ok) {
+          const updatedJob = (await updateResponse.json()) as InvestParseJob
+          setJob(updatedJob)
+        }
+      }
     } catch (error) {
       setErrorMessage(String(error))
     }

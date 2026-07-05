@@ -280,6 +280,18 @@ class InvestParseJobManager:
                 raise HTTPException(status_code=404, detail="Job not found")
             return job
 
+    async def update_job(self, job_id: str, payload: Any) -> InvestParseJob:
+        async with self._lock:
+            job = self._require_job_locked(job_id)
+            if payload.model is not None:
+                job.model = payload.model
+            if payload.base_url is not None:
+                job.base_url = payload.base_url
+            if payload.temperature is not None:
+                job.temperature = payload.temperature
+            job.updated_at = utcnow()
+            return job
+
     async def pause(self, job_id: str) -> InvestParseJob:
         async with self._lock:
             job = self._require_job_locked(job_id)
@@ -779,6 +791,17 @@ async def load_example_job(payload: LoadExampleRequest) -> InvestParseJob:
 @router.get("/jobs/{job_id}", response_model=InvestParseJob)
 async def get_invest_parse_job(job_id: str) -> InvestParseJob:
     return await manager.get_job(job_id)
+
+
+class UpdateJobRequest(BaseModel):
+    model: str | None = None
+    base_url: str | None = None
+    temperature: float | None = None
+
+
+@router.patch("/jobs/{job_id}", response_model=InvestParseJob)
+async def update_invest_parse_job(job_id: str, payload: UpdateJobRequest) -> InvestParseJob:
+    return await manager.update_job(job_id, payload)
 
 
 @router.post("/jobs/{job_id}/pause", response_model=InvestParseJob)
