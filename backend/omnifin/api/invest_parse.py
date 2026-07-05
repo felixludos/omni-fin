@@ -53,11 +53,20 @@ class InvestmentGroup(BaseModel):
     confidence: float = 0.0
 
 
+class RowAttachment(BaseModel):
+    """Attachment of a child row to a parent row."""
+    child_index: int
+    parent_index: int
+    attachment_type: str = "wash_sale"
+    summary: str = ""
+
+
 class InvestmentParseResult(BaseModel):
     """Result of parsing a single row - either existing symbol or new investment."""
-    status: Literal["known", "new"]
+    status: Literal["known", "new", "no_investment", "attached"]
     symbol: str | None = None
     investment: dict[str, Any] | None = None
+    attached_to: int | None = None
 
 
 class RowInterpretation(BaseModel):
@@ -95,6 +104,7 @@ class InvestParseJob(BaseModel):
     base_url: str = "http://localhost:11434/v1"
     investment_groups: list[InvestmentGroup] = Field(default_factory=list)
     group_column: str | None = None
+    row_attachments: list[RowAttachment] = Field(default_factory=list)
 
 
 class CreateJobRequest(BaseModel):
@@ -424,6 +434,7 @@ class InvestParseJobManager:
                     job.status = "running"
                     job.updated_at = utcnow()
                 else:
+                    # Find next pending row (skip attached/no_investment rows)
                     pending = [row for row in job.rows if row.status == "pending"]
                     if not pending:
                         if any(row.status == "error" for row in job.rows):
@@ -658,7 +669,18 @@ def _build_investment_objects_from_result(
     out: list[Any] = []
     result = row.interpretation.result if row.interpretation else None
     
-    if result is None or result.investment is None:
+    if result is None:
+        return out
+    
+    # Handle no_investment status - skip commit entirely
+    if result.status == "no_investment":
+        return out
+    
+    # Handle attached status - will use parent's investment data
+    if result.status == "attached":
+        return out
+    
+    if result.investment is None:
         return out
     
     investment_data = result.investment
@@ -699,6 +721,40 @@ def _build_investment_objects_from_result(
     
     out.append(created)
     return out
+
+
+def _is_wash_sale_row(row: RowState) -> bool:
+    """Check if a row represents a wash sale adjustment."""
+    source = row.source_row
+    security_desc = source.get("Security description", "").lower()
+    symbol = source.get("Symbol(CUSIP)", "")
+    
+    # Check for wash sale indicators
+    if "wash sale" in security_desc:
+        return True
+    
+    # Check if it's a row with no symbol but has gain/loss info
+    if not symbol or symbol.strip() == "":
+        proceeds = source.get("Proceeds", "")
+        if proceeds and proceeds != "--" and proceeds != "$0.00":
+            return True
+    
+    return False
+
+
+def _find_parent_row_index(rows: list[RowState], current_index: int, symbol: str) -> int | None:
+    """Find the previous row with the same symbol for attachment."""
+    current_row = next((r for r in rows if r.index == current_index), None)
+    if not current_row:
+        return None
+    
+    # Look backwards for a row with the same symbol
+    for i in range(current_index - 1, 0, -1):
+        prev_row = next((r for r in rows if r.index == i), None)
+        if prev_row and prev_row.source_row.get("Symbol(CUSIP)", "").startswith(symbol[:4]):
+            return prev_row.index
+    
+    return None
 
 
 manager = InvestParseJobManager()

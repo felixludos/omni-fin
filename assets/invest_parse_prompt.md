@@ -102,13 +102,17 @@ Each field is documented below with expected values and examples:
 ## Output Requirements
 
 Return only valid JSON matching this schema:
-{"summary": "1 line description of what this row represents", "confidence": 0.0-1.0, "result": {"status": "known|new", "symbol": "string|null", "investment": {...}|null}}
+{"summary": "1 line description of what this row represents", "confidence": 0.0-1.0, "result": {"status": "known|new|no_investment|attached", "symbol": "string|null", "investment": {...}|null, "attached_to": "int|null"}}
 
 For known investments, result.investment should be null.
 For new investments, result.symbol should be null and result.investment contains all fields.
+For no_investment status, the row represents dividends, interest, wash sales, fees, or other non-investment entries.
+For attached status, the row should be attached to a previous row (e.g., wash sale attached to sale).
 
 Do not include markdown fences or explanatory prose.
 
 Example outputs:
 - Known: {"summary": "AAPL stock purchase", "confidence": 0.9, "result": {"status": "known", "symbol": "AAPL", "investment": null}}
 - New: {"summary": "New international ETF exposure", "confidence": 0.8, "result": {"status": "new", "symbol": null, "investment": {"symbol": "EMXC", "name": "iShares Core MSCI Emerging Markets", "category": "etf", "nyse_ticker": null, "ibkr_ticker": "EMXC", "identifier": "IE00B4L5Y983", "identifier_type": "isin", "country": "IE", "fund_type": "etf", "fund_focus": "equity_heavy"}}}
+- No Investment: {"summary": "Wash sale adjustment for GOOG", "confidence": 0.9, "result": {"status": "no_investment", "symbol": null, "investment": null}}
+- Attached: {"summary": "Attached to previous sale row", "confidence": 0.9, "result": {"status": "attached", "symbol": "GOOG", "investment": null, "attached_to": 42}}
