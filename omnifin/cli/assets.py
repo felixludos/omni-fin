@@ -576,19 +576,18 @@ def _process_row_interactive(
             )
         )
 
-        console.print("[dim]Querying LLM...[/dim]", end="")
+        console.print("[dim]Querying LLM...[/dim]")
 
         collected = ""
         try:
             for chunk in provider.stream_completion(prompt, model=model, temperature=temperature):
                 collected += chunk
-                # Update the spinner-like indicator
-                console.print(".", end="", highlight=False)
+                console.print(chunk, end="", highlight=False)
         except Exception as exc:
             console.print(f"\n[red]LLM error: {exc}[/red]")
             return None
 
-        console.print(" [green]done[/green]")
+        console.print()
 
         # Parse the collected response
         try:
@@ -942,7 +941,32 @@ def _run_interactive(
             if n:
                 col = r.parsed.auto_parse.column
                 val = r.parsed.auto_parse.value
-                console.print(f"  [cyan]Auto-filled {n} rows matching {col}={val}[/cyan]")
+                # Collect auto-filled rows before filtering remaining
+                auto_filled_indices = [j for j in remaining if results[j].parsed is not None]
+                # Show table of auto-filled rows
+                from rich.table import Table as _Table
+
+                auto_table = _Table(
+                    title=f"Auto-filled {n} rows matching {col}={val}",
+                    border_style="cyan",
+                )
+                auto_table.add_column("Row #", style="bold")
+                auto_table.add_column("Symbol")
+                auto_table.add_column("Name")
+                auto_table.add_column("Summary")
+                for j in auto_filled_indices:
+                    inv = (
+                        results[j].parsed.investment
+                        if results[j].parsed and results[j].parsed.investment
+                        else None
+                    )
+                    auto_table.add_row(
+                        str(results[j].index),
+                        inv.symbol if inv else "-",
+                        inv.name if inv else "-",
+                        results[j].parsed.summary if results[j].parsed else "-",
+                    )
+                console.print(auto_table)
                 auto_filled_total += n
                 remaining = [j for j in remaining if results[j].parsed is None]
 
