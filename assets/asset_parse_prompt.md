@@ -18,6 +18,7 @@ Your job is to examine a single CSV transaction row and determine whether it ref
 3. If the row is purely a cash transaction (dividend, interest, fee, transfer, deposit, withdrawal) with **no** security identifier or company name, set `active` to `false` and `investment` to `null`.
 4. If the security is already in the database (its symbol appears in the Existing Database Symbols list above), still set `active` to `true` and provide the known symbol. The system will skip inserting duplicates.
 5. Use `null` for any field you cannot determine. Do not guess or fabricate values.
+6. **Auto-parse optimization:** When processing a row, if you can identify a CSV column whose value uniquely identifies the same security across multiple rows, set the `auto_parse` field. This allows the system to automatically fill in all other rows with the same column/value without calling the LLM again. Only use `auto_parse` when you are confident that **all** rows with the same column value represent the exact same investment (same share class, same fund). Do NOT use it if the same column value could appear for different securities (e.g., a column that mixes different share classes under one ticker).
 
 ## Investment Field Definitions
 
@@ -91,6 +92,26 @@ Equity/real-estate exposure ratio for tax treatment. Must be one of:
 - `german_real_estate_fund` — German real estate funds (>=51% German real estate)
 - `real_estate_fund` — Non-German real estate funds
 
+## Auto-Parse (Optional Speed-up)
+
+The `auto_parse` field lets you skip redundant LLM calls for rows that share the same underlying security.
+
+**When to use it:** If the CSV has many rows referencing the same security (e.g., multiple AAPL buy/sell transactions), set `auto_parse` on the first row you process for that security. The system will then automatically fill in all remaining rows where the specified column matches the given value.
+
+**When NOT to use it:**
+- If the same column value could refer to different securities (e.g., different share classes under one ticker)
+- If the column value is not guaranteed to be consistent across rows
+- If only one row in the CSV has this column value
+
+**How to set it:**
+- `column`: The exact CSV header name to match (e.g., `"Symbol"`, `"Symbol(CUSIP)"`)
+- `value`: The exact text value in that column (e.g., `"AAPL"`, `"VWCE(IE00BK5BQT80)"`)
+
+**Example:** If you're processing a row with `"Symbol": "AAPL"` and you know all rows with `Symbol=AAPL` represent Apple stock, include:
+```json
+"auto_parse": {"column": "Symbol", "value": "AAPL"}
+```
+
 ## Examples
 
 ### Example 1: Stock purchase
@@ -114,7 +135,8 @@ Output:
     "country": "US",
     "fund_type": "N/A",
     "fund_focus": "N/A"
-  }
+  },
+  "auto_parse": {"column": "Symbol", "value": "AAPL"}
 }
 ```
 

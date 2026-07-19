@@ -137,6 +137,23 @@ class ParsedAsset(BaseModel):
     )
 
 
+class AutoParser(BaseModel):
+    """Specifies a column/value pair that can auto-match similar rows."""
+
+    column: str = Field(
+        description=(
+            "CSV column name to match on (e.g., 'Symbol', 'Symbol(CUSIP)'). "
+            "Must be an exact match to a header in the input CSV."
+        ),
+    )
+    value: str = Field(
+        description=(
+            "Exact text value in that column that identifies the same investment. "
+            "All rows where this column contains this exact string will be auto-filled."
+        ),
+    )
+
+
 class LlmAssetResponse(BaseModel):
     """Full LLM response schema for structured investment parsing."""
 
@@ -163,6 +180,14 @@ class LlmAssetResponse(BaseModel):
         description=(
             "Investment metadata when active=true. Must include at least 'active: true' and 'symbol'. "
             "Set to null when active=false."
+        ),
+    )
+    auto_parse: AutoParser | None = Field(
+        default=None,
+        description=(
+            "Optional: speeds up processing by auto-filling all rows where a given column "
+            "matches a specific value. Set this when you can identify a column that uniquely "
+            "identifies the same security across multiple rows. Leave null if no such column exists."
         ),
     )
 
@@ -252,6 +277,40 @@ def _load_partial(path: Path) -> dict[str, LlmAssetResponse]:
         )
         results[row_hash] = parsed
     return results
+
+
+# ---------------------------------------------------------------------------
+# Auto-fill helpers
+# ---------------------------------------------------------------------------
+
+
+def _auto_fill_rows(
+    results: list[RowResult],
+    parsed: LlmAssetResponse,
+    headers: list[str] | None,
+    progress_writer: ProgressWriter | None,
+) -> int:
+    """Fill all unprocessed rows matching auto_parse column/value.
+
+    Returns the number of rows auto-filled.
+    """
+    if not parsed.auto_parse:
+        return 0
+    col = parsed.auto_parse.column
+    val = parsed.auto_parse.value
+    if headers is not None and col not in headers:
+        return 0
+
+    filled = 0
+    for r in results:
+        if r.parsed is not None:
+            continue
+        if r.source_row.get(col, "") == val:
+            r.parsed = parsed
+            if progress_writer:
+                progress_writer.write_row(r)
+            filled += 1
+    return filled
 
 
 # ---------------------------------------------------------------------------
@@ -704,6 +763,14 @@ def _edit_parsed(console: Console, parsed: LlmAssetResponse) -> LlmAssetResponse
 @click.option(
     "--temperature", type=float, default=0.0, show_default=True, help="LLM sampling temperature."
 )
+@click.option(
+    "--no-auto-parse",
+    "auto_parse_enabled",
+    is_flag=True,
+    flag_value=False,
+    default=True,
+    help="Disable auto-parse (skip rows matching same column/value without LLM calls).",
+)
 def assets_command(
     input_csv: str,
     db_path: str,
@@ -715,6 +782,7 @@ def assets_command(
     yes: bool,
     interactive: bool,
     temperature: float,
+    auto_parse_enabled: bool,
 ) -> None:
     """Detect investments in a transaction CSV using LLM and add them to the database."""
     console = Console()
@@ -758,6 +826,25 @@ def assets_command(
             if r.from_partial:
                 progress_writer.write_row(r)
 
+    # 5. Apply auto-parse from partial results (skips remaining rows with same column/value)
+    auto_filled_total = 0
+    if auto_parse_enabled:
+        for r in results:
+            if r.from_partial and r.parsed and r.parsed.auto_parse:
+                n = _auto_fill_rows(results, r.parsed, headers, progress_writer)
+                if n:
+                    col = r.parsed.auto_parse.column
+                    val = r.parsed.auto_parse.value
+                    console.print(
+                        f"[cyan]Auto-filled {n} rows matching {col}={val} (from partial)[/cyan]"
+                    )
+                    auto_filled_total += n
+        if auto_filled_total:
+            to_process = [i for i in to_process if results[i].parsed is None]
+            console.print(
+                f"[bold cyan]Auto-filled {auto_filled_total} rows from partial results (skipped LLM calls)[/bold cyan]"
+            )
+
     if not to_process:
         console.print("[bold green]All rows already processed (from partial).[/bold green]")
     else:
@@ -769,7 +856,7 @@ def assets_command(
 
         # 6. Process rows
         if interactive:
-            _run_interactive(
+            auto_filled_total += _run_interactive(
                 console,
                 results,
                 to_process,
@@ -778,9 +865,10 @@ def assets_command(
                 existing_symbols,
                 temperature,
                 progress_writer=progress_writer,
+                auto_parse_enabled=auto_parse_enabled,
             )
         else:
-            _run_batch(
+            batch_auto_filled, _ = _run_batch(
                 console,
                 results,
                 to_process,
@@ -789,9 +877,16 @@ def assets_command(
                 existing_symbols,
                 temperature,
                 progress_writer=progress_writer,
+                auto_parse_enabled=auto_parse_enabled,
             )
+            auto_filled_total += batch_auto_filled
 
     # 7. Finalize
+    if auto_filled_total:
+        console.print(
+            f"[bold cyan]Auto-filled {auto_filled_total} rows total (skipped LLM calls)[/bold cyan]"
+        )
+
     if progress_writer:
         progress_writer.close()
         console.print(f"[bold green]Wrote progress to {progress_csv}[/bold green]")
@@ -810,12 +905,19 @@ def _run_interactive(
     existing_symbols: list[str],
     temperature: float,
     progress_writer: ProgressWriter | None = None,
-) -> None:
-    """Process rows one by one with streaming and user review."""
-    total = len(to_process)
-    for i, idx in enumerate(to_process, start=1):
+    auto_parse_enabled: bool = True,
+) -> int:
+    """Process rows one by one with streaming and user review.
+
+    Returns ``auto_filled_total``.
+    """
+    auto_filled_total = 0
+    remaining = list(to_process)
+
+    while remaining:
+        idx = remaining.pop(0)
         r = results[idx]
-        console.print(f"\n[dim]Processing {i}/{total} (row {r.index})[/dim]")
+        console.print(f"\n[dim]Processing row {r.index} ({len(remaining)} remaining)[/dim]")
 
         parsed = _process_row_interactive(
             r.source_row,
@@ -834,6 +936,18 @@ def _run_interactive(
         if progress_writer:
             progress_writer.write_row(r)
 
+        # Auto-fill remaining rows matching auto_parse column/value
+        if auto_parse_enabled and r.parsed and r.parsed.auto_parse:
+            n = _auto_fill_rows(results, r.parsed, headers=None, progress_writer=progress_writer)
+            if n:
+                col = r.parsed.auto_parse.column
+                val = r.parsed.auto_parse.value
+                console.print(f"  [cyan]Auto-filled {n} rows matching {col}={val}[/cyan]")
+                auto_filled_total += n
+                remaining = [j for j in remaining if results[j].parsed is None]
+
+    return auto_filled_total
+
 
 def _run_batch(
     console: Console,
@@ -844,9 +958,16 @@ def _run_batch(
     existing_symbols: list[str],
     temperature: float,
     progress_writer: ProgressWriter | None = None,
-) -> None:
-    """Process rows in batch with a progress bar."""
+    auto_parse_enabled: bool = True,
+) -> tuple[int, int]:
+    """Process rows in batch with a progress bar.
+
+    Returns ``(auto_filled_total, error_count)``.
+    """
     from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+    auto_filled_total = 0
+    error_count = 0
 
     with Progress(
         SpinnerColumn(),
@@ -858,7 +979,9 @@ def _run_batch(
     ) as progress:
         task = progress.add_task("Processing rows...", total=len(to_process))
 
-        for idx in to_process:
+        i = 0
+        while i < len(to_process):
+            idx = to_process[i]
             r = results[idx]
             progress.update(task, description=f"Row {r.index}/{len(results)}")
 
@@ -883,11 +1006,31 @@ def _run_batch(
                     confidence=0.0,
                     active=False,
                 )
+                error_count += 1
 
             if progress_writer:
                 progress_writer.write_row(r)
 
+            # Auto-fill remaining rows matching auto_parse column/value
+            if auto_parse_enabled and r.parsed and r.parsed.auto_parse:
+                n = _auto_fill_rows(
+                    results, r.parsed, headers=None, progress_writer=progress_writer
+                )
+                if n:
+                    col = r.parsed.auto_parse.column
+                    val = r.parsed.auto_parse.value
+                    console.print(f"\n  [cyan]Auto-filled {n} rows matching {col}={val}[/cyan]")
+                    auto_filled_total += n
+                    # Remove auto-filled indices from to_process (they are now after i)
+                    to_process[:] = to_process[: i + 1] + [
+                        j for j in to_process[i + 1 :] if results[j].parsed is None
+                    ]
+                    progress.update(task, total=len(to_process))
+
             progress.advance(task)
+            i += 1
+
+    return auto_filled_total, error_count
 
 
 def _report_and_save(
