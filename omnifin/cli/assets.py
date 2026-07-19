@@ -233,6 +233,24 @@ def _load_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     return headers, rows
 
 
+_ENUM_VALUE_MAP: dict[str, str] = {
+    **{m.name: m.value for m in AssetType},
+    **{m.name: m.value for m in Country},
+    **{m.name: m.value for m in FundType},
+    **{m.name: m.value for m in FundFocus},
+}
+
+
+def _norm_enum_str(val: str | None) -> str | None:
+    """Normalize ``'EnumType.MEMBER'`` → the enum's string value for backwards-compatible partial loading."""
+    if not val:
+        return None
+    if "." in val and val.split(".", 1)[0].isidentifier():
+        member_name = val.split(".", 1)[1]
+        return _ENUM_VALUE_MAP.get(member_name, member_name)
+    return val
+
+
 def _load_partial(path: Path) -> dict[str, LlmAssetResponse]:
     """Load a partial/progress CSV and return {row_hash: parsed_response}."""
     import io
@@ -260,14 +278,14 @@ def _load_partial(path: Path) -> dict[str, LlmAssetResponse]:
                     active=active,
                     symbol=row.get("symbol") or None,
                     name=row.get("name") or None,
-                    category=row.get("category") or None,
+                    category=_norm_enum_str(row.get("category")),
                     nyse_ticker=row.get("nyse_ticker") or None,
                     ibkr_ticker=row.get("ibkr_ticker") or None,
                     identifier=row.get("identifier") or None,
                     identifier_type=row.get("identifier_type") or None,
-                    country=row.get("country") or None,
-                    fund_type=row.get("fund_type") or None,
-                    fund_focus=row.get("fund_focus") or None,
+                    country=_norm_enum_str(row.get("country")),
+                    fund_type=_norm_enum_str(row.get("fund_type")),
+                    fund_focus=_norm_enum_str(row.get("fund_focus")),
                     confidence=float(row.get("confidence", "0") or "0"),
                     summary=row.get("summary", ""),
                 )
@@ -475,14 +493,14 @@ def _result_to_csv_row(
             inv = r.parsed.investment
             row["symbol"] = inv.symbol or ""
             row["name"] = inv.name or ""
-            row["category"] = str(inv.category or "")
+            row["category"] = inv.category.value if inv.category else ""
             row["nyse_ticker"] = inv.nyse_ticker or ""
             row["ibkr_ticker"] = inv.ibkr_ticker or ""
             row["identifier"] = inv.identifier or ""
             row["identifier_type"] = inv.identifier_type or ""
-            row["country"] = str(inv.country or "")
-            row["fund_type"] = str(inv.fund_type or "")
-            row["fund_focus"] = str(inv.fund_focus or "")
+            row["country"] = inv.country.value if inv.country else ""
+            row["fund_type"] = inv.fund_type.value if inv.fund_type else ""
+            row["fund_focus"] = inv.fund_focus.value if inv.fund_focus else ""
             row["confidence"] = str(inv.confidence)
             row["summary"] = r.parsed.summary
         else:
@@ -545,6 +563,56 @@ def _write_progress_csv(
 # Interactive mode (rich TUI)
 # ---------------------------------------------------------------------------
 
+_EDITABLE_FIELDS = frozenset(
+    {
+        "symbol",
+        "name",
+        "category",
+        "country",
+        "fund_type",
+        "fund_focus",
+        "identifier",
+        "identifier_type",
+        "nyse_ticker",
+        "ibkr_ticker",
+    }
+)
+
+
+def _display_parsed_table(console: "Console", parsed: LlmAssetResponse) -> None:
+    """Display the parsed investment result as a rich table."""
+    from rich.panel import Panel
+    from rich.table import Table as _Table
+
+    if parsed and parsed.active and parsed.investment:
+        inv = parsed.investment
+        table = _Table(title="Parsed Investment", show_header=False, border_style="green")
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        table.add_row("Symbol", inv.symbol or "-")
+        table.add_row("Name", inv.name or "-")
+        table.add_row("Category", inv.category or "-")
+        table.add_row("Country", inv.country or "-")
+        table.add_row("Fund Type", inv.fund_type or "-")
+        table.add_row("Fund Focus", inv.fund_focus or "-")
+        table.add_row("ISIN/CUSIP", inv.identifier or "-")
+        table.add_row("ID Type", inv.identifier_type or "-")
+        table.add_row("NYSE Ticker", inv.nyse_ticker or "-")
+        table.add_row("IBKR Ticker", inv.ibkr_ticker or "-")
+        table.add_row("Confidence", f"{parsed.confidence:.0%}")
+        table.add_row("Summary", parsed.summary)
+        console.print(table)
+    elif parsed and not parsed.active:
+        console.print(
+            Panel(
+                f"[dim]{parsed.summary}[/dim]\n[bold]Not an investment[/bold]",
+                title="Result",
+                border_style="yellow",
+            )
+        )
+    else:
+        console.print(Panel("[red]No valid parse result[/red]", border_style="red"))
+
 
 def _process_row_interactive(
     row: dict[str, str],
@@ -558,7 +626,6 @@ def _process_row_interactive(
     from rich.console import Console
     from rich.panel import Panel
     from rich.prompt import Prompt
-    from rich.table import Table
 
     console = Console()
 
@@ -594,7 +661,6 @@ def _process_row_interactive(
             parsed = LlmAssetResponse.model_validate_json(collected)
         except Exception:
             try:
-                # Try to extract JSON from the response
                 match = re.search(r"\{.*\}", collected, re.DOTALL)
                 if match:
                     parsed = LlmAssetResponse.model_validate_json(match.group())
@@ -605,57 +671,47 @@ def _process_row_interactive(
                 console.print("[red]Failed to parse LLM response.[/red]")
                 parsed = None
 
-        # Display the result
-        if parsed and parsed.active and parsed.investment:
-            inv = parsed.investment
-            table = Table(title="Parsed Investment", show_header=False, border_style="green")
-            table.add_column("Field", style="bold")
-            table.add_column("Value")
-            table.add_row("Symbol", inv.symbol or "-")
-            table.add_row("Name", inv.name or "-")
-            table.add_row("Category", inv.category or "-")
-            table.add_row("Country", inv.country or "-")
-            table.add_row("Fund Type", inv.fund_type or "-")
-            table.add_row("Fund Focus", inv.fund_focus or "-")
-            table.add_row("ISIN/CUSIP", inv.identifier or "-")
-            table.add_row("ID Type", inv.identifier_type or "-")
-            table.add_row("NYSE Ticker", inv.nyse_ticker or "-")
-            table.add_row("IBKR Ticker", inv.ibkr_ticker or "-")
-            table.add_row("Confidence", f"{parsed.confidence:.0%}")
-            table.add_row("Summary", parsed.summary)
-            console.print(table)
-        elif parsed and not parsed.active:
+        # Edit loop: display table, prompt for field=value edits, repeat
+        while True:
+            _display_parsed_table(console, parsed)
+
             console.print(
-                Panel(
-                    f"[dim]{parsed.summary}[/dim]\n[bold]Not an investment[/bold]",
-                    title="Result",
-                    border_style="yellow",
-                )
+                "[dim]field=value to edit · Enter to accept · r re-run · s skip · q quit[/dim]"
             )
-        else:
-            console.print(Panel("[red]No valid parse result[/red]", border_style="red"))
+            raw = Prompt.ask("[bold]>[/bold]", default="", show_default=False)
+            raw = raw.strip()
 
-        # Prompt user for action
-        choice = Prompt.ask(
-            "[bold]Action[/bold]",
-            choices=["a", "e", "r", "s", "q"],
-            default="a",
-            show_choices=False,
-            show_default=True,
-        )
-
-        if choice == "a":
-            return parsed
-        elif choice == "e":
-            parsed = _edit_parsed(console, parsed)
-            if parsed:
+            if not raw:
                 return parsed
-        elif choice == "r":
-            continue  # Re-run the LLM call
-        elif choice == "s":
-            return None
-        elif choice == "q":
-            raise click.Abort()
+
+            if raw == "r":
+                break  # re-run LLM (outer while loop)
+
+            if raw == "s":
+                return None
+
+            if raw == "q":
+                raise click.Abort()
+
+            # field=value edit
+            if "=" not in raw:
+                console.print("[yellow]Use: field=value (e.g. symbol=AAPL)[/yellow]")
+                continue
+
+            key, _, value = raw.partition("=")
+            key = key.strip()
+            if key not in _EDITABLE_FIELDS:
+                console.print(
+                    f"[yellow]Unknown field: {key}. Valid: {', '.join(sorted(_EDITABLE_FIELDS))}[/yellow]"
+                )
+                continue
+
+            if parsed is None or not parsed.active or not parsed.investment:
+                console.print("[yellow]No parsed investment to edit.[/yellow]")
+                continue
+
+            new_val = None if value.strip().lower() == "null" else value.strip()
+            setattr(parsed.investment, key, new_val)
 
     return None  # unreachable
 
@@ -667,40 +723,6 @@ def _format_row_brief(row: dict[str, str]) -> str:
         if v and v.strip():
             parts.append(f"{k}: {v}")
     return " | ".join(parts[:8])  # First 8 non-empty fields
-
-
-def _edit_parsed(console: Console, parsed: LlmAssetResponse) -> LlmAssetResponse | None:
-    """Let the user edit individual fields of the parsed result."""
-    from rich.prompt import Prompt
-
-    inv = parsed.investment
-    if inv is None:
-        return parsed
-
-    fields = [
-        ("symbol", inv.symbol or ""),
-        ("name", inv.name or ""),
-        ("category", inv.category or ""),
-        ("country", inv.country or ""),
-        ("fund_type", inv.fund_type or ""),
-        ("fund_focus", inv.fund_focus or ""),
-        ("identifier", inv.identifier or ""),
-        ("identifier_type", inv.identifier_type or ""),
-        ("nyse_ticker", inv.nyse_ticker or ""),
-        ("ibkr_ticker", inv.ibkr_ticker or ""),
-    ]
-
-    console.print("[dim]Press Enter to keep current value, type 'null' to clear.[/dim]")
-
-    for field_name, current in fields:
-        new_val = Prompt.ask(f"  {field_name}", default=current)
-        if new_val == "null":
-            new_val = None
-        setattr(inv, field_name, new_val)
-
-    # Rebuild the investment with potentially changed fields
-    parsed.investment = inv
-    return parsed
 
 
 # ---------------------------------------------------------------------------
