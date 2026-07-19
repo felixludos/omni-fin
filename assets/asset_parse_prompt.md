@@ -196,26 +196,13 @@ Output:
 
 ## Output Schema
 
-Return ONLY valid JSON matching this structure. Do not include markdown fences, explanations, or any text outside the JSON.
+Return ONLY valid JSON matching this JSON schema. Do not include markdown fences, explanations, or any text outside the JSON.
 
-{
-  "summary": "One-line description of what this row represents",
-  "confidence": 0.0 to 1.0,
-  "active": true/false,
-  "investment": {
-    "active": true,
-    "symbol": "string or null",
-    "name": "string or null",
-    "category": "string or null",
-    "nyse_ticker": "string or null",
-    "ibkr_ticker": "string or null",
-    "identifier": "string or null",
-    "identifier_type": "string or null",
-    "country": "string or null",
-    "fund_type": "string or null",
-    "fund_focus": "string or null"
-  }
-}
+```json
+{{schema_json}}
+```
 
 When `active` is false, set `investment` to null.
 When `active` is true, `investment` must be present with at least `active: true` and `symbol` set.
+All enum fields must use the exact string values defined in the schema (e.g., `"etf"`, not `"ETF fund"`).
+Use `null` for any optional field you cannot determine.

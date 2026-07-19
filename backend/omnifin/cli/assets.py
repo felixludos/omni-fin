@@ -16,6 +16,7 @@ from omnifin.ai.structured import LLMProvider
 from omnifin.core.db import DatabaseSession
 from omnifin.core.ids import stable_hash_bytes, utcnow
 from omnifin.models import Asset, Comment, Investment, Report, Tag
+from omnifin.models.categories import AssetType, Country, FundFocus, FundType
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROMPT_TEMPLATE_PATH = REPO_ROOT / "assets" / "asset_parse_prompt.md"
@@ -28,28 +29,142 @@ PROMPT_TEMPLATE_PATH = REPO_ROOT / "assets" / "asset_parse_prompt.md"
 class ParsedAsset(BaseModel):
     """Investment metadata extracted by the LLM for a single row."""
 
-    active: bool = False
-    symbol: str | None = None
-    name: str | None = None
-    category: str | None = None
-    nyse_ticker: str | None = None
-    ibkr_ticker: str | None = None
-    identifier: str | None = None
-    identifier_type: str | None = None
-    country: str | None = None
-    fund_type: str | None = None
-    fund_focus: str | None = None
-    confidence: float = 0.0
-    summary: str = ""
+    active: bool = Field(
+        default=False,
+        description=(
+            "Whether this row references a financial security or investment instrument. "
+            "True for stocks, ETFs, mutual funds, bonds, crypto, etc. "
+            "False for pure cash transactions like dividends, fees, transfers."
+        ),
+    )
+    symbol: str | None = Field(
+        default=None,
+        description=(
+            "Canonical uppercase ticker or identifier used as the primary key. "
+            "Examples: 'AAPL' (Apple), 'VWCE' (Vanguard FTSE All-World), 'BTC' (Bitcoin). "
+            "Must be uppercase, no spaces."
+        ),
+    )
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Human-readable security name. Use the common brand name, not legal names. "
+            "Examples: 'Apple', 'Microsoft', 'Vanguard Total Stock Market ETF'. "
+            "Remove suffixes like 'Common Stock', 'Ordinary Shares', 'Class A'."
+        ),
+    )
+    category: AssetType | None = Field(
+        default=None,
+        description=(
+            "Asset type classification. Allowed values: "
+            "'stock' (individual company shares), 'etf' (exchange-traded fund), "
+            "'mutual_fund' (actively managed fund), 'index_fund' (passively tracked, not on exchange), "
+            "'bond' (government or corporate bonds), 'crypto' (cryptocurrencies), "
+            "'commodity' (commodity exposure), 'derivative' (options, futures), "
+            "'cash_equivalent' (money market, sweep balances), 'fiat' (currency like USD, EUR), "
+            "'other', 'unknown'."
+        ),
+    )
+    nyse_ticker: str | None = Field(
+        default=None,
+        description=(
+            "NYSE-format ticker symbol if different from the main symbol. "
+            "Example: 'BRK/B' for Berkshire Hathaway (when main symbol is 'BRK.B')."
+        ),
+    )
+    ibkr_ticker: str | None = Field(
+        default=None,
+        description=(
+            "Interactive Brokers platform ticker identifier. "
+            "Example: 'AAPL', 'ISIN:IE00BK5BQT80' for some international securities."
+        ),
+    )
+    identifier: str | None = Field(
+        default=None,
+        description=(
+            "Stable instrument identifier (ISIN, CUSIP, WKN, SEDOL, FIGI). "
+            "ISIN example: 'US0378331005' (AAPL). "
+            "CUSIP example: '037833100' (AAPL)."
+        ),
+    )
+    identifier_type: str | None = Field(
+        default=None,
+        description=(
+            "Type of the identifier field. Allowed values: 'isin', 'cusip', 'wkn', 'sedol', 'figi'."
+        ),
+    )
+    country: Country | None = Field(
+        default=None,
+        description=(
+            "Primary domicile country code of the issuer. "
+            "Common values: 'US' (United States), 'IE' (Ireland), 'DE' (Germany), "
+            "'UK' (United Kingdom), 'NL' (Netherlands), 'LU' (Luxembourg), "
+            "'FR' (France), 'CH' (Switzerland), 'JP' (Japan), "
+            "'various' (global/multi-country funds)."
+        ),
+    )
+    fund_type: FundType | None = Field(
+        default=None,
+        description=(
+            "Fund structure classification. Allowed values: "
+            "'N/A' (not a fund — stocks, bonds, crypto, etc.), "
+            "'etf' (exchange-traded fund), 'mutual_fund' (actively managed), "
+            "'index_fund' (passively tracked, not on exchange), "
+            "'real_estate_fund' (REIT or real estate fund), 'other_fund'."
+        ),
+    )
+    fund_focus: FundFocus | None = Field(
+        default=None,
+        description=(
+            "Fund equity/real-estate exposure bucket for jurisdiction-specific tax treatment. "
+            "Allowed values: 'N/A' (not a fund), "
+            "'equity_heavy' (>50% in corporate equities, e.g. VOO, VTI, QQQ), "
+            "'mixed' (25-50% in equities, balanced funds), "
+            "'other_fund' (<25% in equities, bond funds, Treasury ETFs), "
+            "'german_real_estate_fund' (>=51% German real estate), "
+            "'real_estate_fund' (>=51% non-German real estate)."
+        ),
+    )
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Model confidence in this parse result, from 0.0 to 1.0.",
+    )
+    summary: str = Field(
+        default="",
+        description="One-line human-readable description of what this row represents.",
+    )
 
 
 class LlmAssetResponse(BaseModel):
     """Full LLM response schema for structured investment parsing."""
 
-    summary: str = ""
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    active: bool = False
-    investment: ParsedAsset | None = None
+    summary: str = Field(
+        default="",
+        description="One-line human-readable description of what this row represents.",
+    )
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Model confidence in this parse result, from 0.0 to 1.0.",
+    )
+    active: bool = Field(
+        default=False,
+        description=(
+            "Whether this row references a financial security or investment instrument. "
+            "True for stocks, ETFs, mutual funds, bonds, crypto, etc. "
+            "False for pure cash transactions (dividends, fees, transfers) or unparseable rows."
+        ),
+    )
+    investment: ParsedAsset | None = Field(
+        default=None,
+        description=(
+            "Investment metadata when active=true. Must include at least 'active: true' and 'symbol'. "
+            "Set to null when active=false."
+        ),
+    )
 
 
 class RowResult(BaseModel):
@@ -150,9 +265,11 @@ def _build_prompt(row: dict[str, str], existing_symbols: list[str]) -> str:
     else:
         template = _fallback_prompt()
 
+    schema = json.dumps(LlmAssetResponse.model_json_schema(), indent=2)
     replacements = {
         "row_json": json.dumps(row, ensure_ascii=False, indent=2),
         "existing_symbols_json": json.dumps(existing_symbols, ensure_ascii=False),
+        "schema_json": schema,
     }
     rendered = template
     for key, value in replacements.items():

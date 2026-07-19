@@ -126,7 +126,7 @@ class FundType(str, Enum):
 	"""Other types of funds that don't fit into the above classifications."""
 
 
-class FundEquityRatioType(str, Enum):
+class FundFocus(str, Enum):
 	NA = "N/A"
 	"""Not applicable or not a fund (e.g., stocks, bonds, options)."""
 
@@ -134,7 +134,7 @@ class FundEquityRatioType(str, Enum):
 	"""The fund's official prospectus mandates that it continuously holds more than 50% (i.e., 51%+) in physical corporate equities. Most broad U.S. index ETFs (like VOO, VTI, QQQ) fall into this category."""
 
 	MIXED = "mixed"
-	"""The fund continuously holds at least 25% in physical corporate equities (e.g., a balanced "60/40" stock-to-bond fund)."""
+	"""The fund continuously holds at least 25% in physical corporate equities (e.g., a balanced '60/40' stock-to-bond fund)."""
 
 	OTHER_FUND = "other_fund"
 	"""The fund holds less than 25% in equities (e.g., Treasury ETFs, bond funds, or money market funds)."""

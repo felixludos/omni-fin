@@ -23,7 +23,11 @@ import sqlite3
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
-from omnifin.core.errors import LedgerIntegrityError, MissingDatabaseSessionError, ReadOnlyModelError
+from omnifin.core.errors import (
+    LedgerIntegrityError,
+    MissingDatabaseSessionError,
+    ReadOnlyModelError,
+)
 from omnifin.core.ids import parse_uuid, to_db_value, utcnow, uuid7
 from omnifin.core.registry import (
     COERCION_KEYS,
@@ -32,7 +36,15 @@ from omnifin.core.registry import (
     RELATION_SPECS,
     SQL_TO_MODEL_FIELDS,
 )
-from omnifin.models.categories import AssetTagOptions, AssetType, Country, EventType, FundEquityRatioType, FundType, SaleTerm
+from omnifin.models.categories import (
+    AssetTagOptions,
+    AssetType,
+    Country,
+    EventType,
+    FundFocus,
+    FundType,
+    SaleTerm,
+)
 
 DOMAIN_CLASSES: dict[str, type["DomainModel"]] = {}
 GLOBAL_IDENTITY_MAP: dict[type, dict[Any, "DomainModel"]] = defaultdict(dict)
@@ -167,7 +179,9 @@ class DomainModel(BaseModel, metaclass=IdentityMapMeta):
     _readonly: bool = PrivateAttr(default=False)
     _hydrating: bool = PrivateAttr(default=False)
     _staged_adds: dict[str, dict[Any, Any]] = PrivateAttr(default_factory=lambda: defaultdict(dict))
-    _staged_removes: dict[str, dict[Any, Any]] = PrivateAttr(default_factory=lambda: defaultdict(dict))
+    _staged_removes: dict[str, dict[Any, Any]] = PrivateAttr(
+        default_factory=lambda: defaultdict(dict)
+    )
     _relation_cache: dict[str, dict[Any, Any]] = PrivateAttr(default_factory=dict)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -256,8 +270,12 @@ class DomainModel(BaseModel, metaclass=IdentityMapMeta):
                 if name in model_fields:
                     spec = MODEL_SPECS.get(self.__class__.__name__)
                     identity_field = spec.identity_field if spec else "id"
-                    loaded = object.__getattribute__(self, "__pydantic_private__").get("_loaded", True)
-                    hydrating = object.__getattribute__(self, "__pydantic_private__").get("_hydrating", False)
+                    loaded = object.__getattribute__(self, "__pydantic_private__").get(
+                        "_loaded", True
+                    )
+                    hydrating = object.__getattribute__(self, "__pydantic_private__").get(
+                        "_hydrating", False
+                    )
                     if not loaded and not hydrating and name != identity_field:
                         self._hydrate()
             except Exception:
@@ -369,7 +387,9 @@ class DomainModel(BaseModel, metaclass=IdentityMapMeta):
     def _exists(self) -> bool:
         return self._existing_row() is not None
 
-    def to_sql_dict(self, *, report: "Report | None" = None, exists: bool = False) -> dict[str, Any]:
+    def to_sql_dict(
+        self, *, report: "Report | None" = None, exists: bool = False
+    ) -> dict[str, Any]:
         spec = MODEL_SPECS[self.__class__.__name__]
         row: dict[str, Any] = {}
         for field_name, column_name in spec.fields.items():
@@ -682,7 +702,9 @@ class Report(Commentable):
             exists = existing_row is not None
             missing = obj.missing_required_fields(exists=exists)
             if missing:
-                summary.add_error(f"{model_name}({obj._pk_value()}) missing required fields: {', '.join(missing)}")
+                summary.add_error(
+                    f"{model_name}({obj._pk_value()}) missing required fields: {', '.join(missing)}"
+                )
                 action = "error"
             elif not exists:
                 action = "insert"
@@ -722,7 +744,6 @@ class Report(Commentable):
         summary.relation_inserts = dict(relation_inserts)
         summary.relation_deletes = dict(relation_deletes)
         return summary
-
 
 
 INVESTMENT_COMMENT_TYPES: dict[str, str] = {
@@ -782,13 +803,18 @@ def _first_tags_by_category(tags: list["Tag"], category: str) -> list["Tag"]:
 
 class Asset(Tagable, Commentable):
     """A fungible financial instrument or currency that can be held in an account."""
-    symbol: str = Field(description="Canonical asset symbol used as primary key (e.g., USD, AAPL, VWCE).")
+
+    symbol: str = Field(
+        description="Canonical asset symbol used as primary key (e.g., USD, AAPL, VWCE)."
+    )
     name: Optional[str] = Field(default=None, description="Optional human-readable asset name.")
     category: Optional[AssetType | str] = Field(
         default=None,
         description="Normalized asset category. Prefer AssetType enum values; keep source strings only if not yet mapped.",
     )
-    recorded: Optional[Report] = Field(default=None, description="Report that introduced or updated this asset.")
+    recorded: Optional[Report] = Field(
+        default=None, description="Report that introduced or updated this asset."
+    )
 
 
 class Investment(Asset):
@@ -799,20 +825,36 @@ class Investment(Asset):
     country, fund_type, fund_focus).  The Investment type is determined by the presence
     of any investment-specific metadata rather than by category alone.
     """
+
     nyse_ticker: Optional[str] = Field(default=None, description="NYSE ticker alias if available.")
-    ibkr_ticker: Optional[str] = Field(default=None, description="Interactive Brokers ticker if it differs from canonical symbol.")
-    identifier: Optional[str] = Field(default=None, description="ISIN, CUSIP, WKN, or other stable instrument identifier.")
-    identifier_type: Optional[str] = Field(default=None, description="The type of instrument identifier (e.g., 'cusip', 'isin', 'wkn').")
-    country: Optional[Country | str] = Field(default=None, description="Primary domicile country code for the instrument (e.g., 'US', 'NL', 'DE').")
-    fund_type: Optional[FundType | str] = Field(default=None, description="Fund structure classification used for reporting/tax logic (e.g., 'etf', 'mutual_fund', 'index_fund').")
-    fund_focus: Optional[FundEquityRatioType | str] = Field(
+    ibkr_ticker: Optional[str] = Field(
+        default=None, description="Interactive Brokers ticker if it differs from canonical symbol."
+    )
+    identifier: Optional[str] = Field(
+        default=None, description="ISIN, CUSIP, WKN, or other stable instrument identifier."
+    )
+    identifier_type: Optional[str] = Field(
+        default=None,
+        description="The type of instrument identifier (e.g., 'cusip', 'isin', 'wkn').",
+    )
+    country: Optional[Country | str] = Field(
+        default=None,
+        description="Primary domicile country code for the instrument (e.g., 'US', 'NL', 'DE').",
+    )
+    fund_type: Optional[FundType | str] = Field(
+        default=None,
+        description="Fund structure classification used for reporting/tax logic (e.g., 'etf', 'mutual_fund', 'index_fund').",
+    )
+    fund_focus: Optional[FundFocus | str] = Field(
         default=None,
         description="Fund equity/real-estate exposure bucket for jurisdiction-specific tax treatment (e.g., 'equity_heavy', 'other_fund').",
     )
 
     @classmethod
     def db_get(cls, session: Any, key: Any) -> Optional["Investment"]:
-        row = session.execute("SELECT * FROM assets WHERE symbol = ?", (to_db_value(key),)).fetchone()
+        row = session.execute(
+            "SELECT * FROM assets WHERE symbol = ?", (to_db_value(key),)
+        ).fetchone()
         if row is None:
             return None
         investment = cls(_session=session, _from_db=True, **row)
@@ -844,10 +886,15 @@ class Investment(Asset):
         return cls.db_get(session, key) is not None
 
     def _has_investment_metadata(self) -> bool:
-        return any(getattr(self, field_name, None) is not None for field_name in INVESTMENT_COMMENT_TYPES)
+        return any(
+            getattr(self, field_name, None) is not None for field_name in INVESTMENT_COMMENT_TYPES
+        )
 
     def _load_investment_metadata(self) -> None:
-        comment_map = {comment_type: _first_by_type(self.comments(), comment_type) for comment_type in INVESTMENT_COMMENT_TYPES.values()}
+        comment_map = {
+            comment_type: _first_by_type(self.comments(), comment_type)
+            for comment_type in INVESTMENT_COMMENT_TYPES.values()
+        }
         for field_name, comment_type in INVESTMENT_COMMENT_TYPES.items():
             matches = comment_map.get(comment_type, [])
             if not matches:
@@ -856,7 +903,9 @@ class Investment(Asset):
             if raw_value is not None:
                 object.__setattr__(self, field_name, raw_value)
         tag_categories = list(INVESTMENT_TAG_CATEGORIES.values())
-        tag_map = {category: _first_tags_by_category(self.tags(), category) for category in tag_categories}
+        tag_map = {
+            category: _first_tags_by_category(self.tags(), category) for category in tag_categories
+        }
         for field_name, category in INVESTMENT_TAG_CATEGORIES.items():
             matches = tag_map.get(category, [])
             if not matches:
@@ -879,7 +928,14 @@ class Investment(Asset):
                     self.remove_comment(primary)
                 continue
             if primary is None:
-                self.comment(Comment(_session=self._session, content=desired_text, type=comment_type, created_at=utcnow()))
+                self.comment(
+                    Comment(
+                        _session=self._session,
+                        content=desired_text,
+                        type=comment_type,
+                        created_at=utcnow(),
+                    )
+                )
                 continue
             primary.content = desired_text
             primary.type = comment_type
@@ -922,6 +978,7 @@ class Investment(Asset):
 
 class Account(Tagable, Commentable):
     """A financial account that can hold assets and record transactions."""
+
     id: UUID = Field(default_factory=uuid7)
     name: Optional[str] = None
     type: Optional[str] = None
@@ -952,7 +1009,13 @@ class Account(Tagable, Commentable):
             return
 
         if primary_tag is None:
-            self.add_tags(Tag(_session=self._session, name=self.institution, category=ACCOUNT_INSTITUTION_TAG_CATEGORY))
+            self.add_tags(
+                Tag(
+                    _session=self._session,
+                    name=self.institution,
+                    category=ACCOUNT_INSTITUTION_TAG_CATEGORY,
+                )
+            )
             return
 
         primary_tag.name = self.institution
@@ -970,8 +1033,10 @@ class Account(Tagable, Commentable):
         self._sync_institution_metadata()
         super()._flush_relations(cursor)
 
+
 class Statement(Tagable, Commentable):
     """A financial statement that reports account balance of a specific asset at a specific date."""
+
     id: UUID = Field(default_factory=uuid7)
     date: Optional[datetime] = None
     account: Optional[Account] = None
@@ -982,6 +1047,7 @@ class Statement(Tagable, Commentable):
 
 class Transfer(Tagable, Commentable):
     """A transfer of assets between accounts, representing a movement of value."""
+
     id: UUID = Field(default_factory=uuid7)
     date: Optional[datetime] = None
     sender: Optional[Account] = None
@@ -1043,7 +1109,14 @@ class Transfer(Tagable, Commentable):
 
         settled_text = _metadata_text(self.settled_at)
         if primary is None:
-            self.comment(Comment(_session=self._session, content=settled_text, type=TRANSFER_SETTLED_AT_COMMENT_TYPE, created_at=utcnow()))
+            self.comment(
+                Comment(
+                    _session=self._session,
+                    content=settled_text,
+                    type=TRANSFER_SETTLED_AT_COMMENT_TYPE,
+                    created_at=utcnow(),
+                )
+            )
             return
 
         primary.content = settled_text
@@ -1081,6 +1154,7 @@ class Transfer(Tagable, Commentable):
 
 class Location(DomainModel):
     """A physical or virtual location associated with a transfer, such as a bank branch or ATM."""
+
     id: UUID = Field(default_factory=uuid7)
     city: Optional[str] = None
     state: Optional[str] = None
@@ -1089,8 +1163,12 @@ class Location(DomainModel):
 
 class Event(Tagable, Commentable):
     """A group of transfers or other financial activities that are logically related, such as a trade or conversion."""
+
     id: UUID = Field(default_factory=uuid7)
-    name: Optional[str] = Field(default=None, description="Human-readable event label such as 'sell', 'dividend', or 'wire transfer'.")
+    name: Optional[str] = Field(
+        default=None,
+        description="Human-readable event label such as 'sell', 'dividend', or 'wire transfer'.",
+    )
     type: Optional[EventType | str] = Field(
         default=None,
         description="Canonical event category. Prefer EventType values and use free-form strings only when source data is more granular.",
@@ -1106,6 +1184,7 @@ class Event(Tagable, Commentable):
 
 class InvestmentSale(DomainModel):
     """Additional information about a sale of an investment for tax reporting purposes."""
+
     id: UUID = Field(
         default_factory=uuid7,
         description="Sale identifier. Prefer sharing the same UUID as the corresponding Event.id for one-to-one linking.",
@@ -1130,7 +1209,9 @@ class InvestmentSale(DomainModel):
 
     @classmethod
     def db_get(cls, session: Any, key: Any) -> Optional["InvestmentSale"]:
-        row = session.execute("SELECT * FROM events WHERE event_id = ?", (to_db_value(key),)).fetchone()
+        row = session.execute(
+            "SELECT * FROM events WHERE event_id = ?", (to_db_value(key),)
+        ).fetchone()
         if row is None:
             return None
         sale = cls(_session=session, _from_db=True, id=row["event_id"])
@@ -1166,7 +1247,9 @@ class InvestmentSale(DomainModel):
         return cls.db_get(session, key) is not None
 
     def _has_sale_metadata(self) -> bool:
-        return any(getattr(self, field_name, None) is not None for field_name in SALE_COMMENT_TYPES) or self.term not in (None, SaleTerm.UNKNOWN, SaleTerm.UNKNOWN.value)
+        return any(
+            getattr(self, field_name, None) is not None for field_name in SALE_COMMENT_TYPES
+        ) or self.term not in (None, SaleTerm.UNKNOWN, SaleTerm.UNKNOWN.value)
 
     def _load_sale_metadata(self) -> None:
         event = self._session.get(Event, self.id) if self._session is not None else None
@@ -1184,12 +1267,16 @@ class InvestmentSale(DomainModel):
             elif field_name == "cost_basis":
                 object.__setattr__(self, field_name, float(raw_value))
             elif field_name == "acquisition":
-                object.__setattr__(self, field_name, Transfer(id=parse_uuid(raw_value), _session=self._session))
+                object.__setattr__(
+                    self, field_name, Transfer(id=parse_uuid(raw_value), _session=self._session)
+                )
         term_tags = _first_tags_by_category(event.tags(), SALE_TERM_TAG_CATEGORY)
         if term_tags:
             object.__setattr__(self, "term", term_tags[0].name)
 
-    def to_sql_dict(self, *, report: "Report | None" = None, exists: bool = False) -> dict[str, Any]:
+    def to_sql_dict(
+        self, *, report: "Report | None" = None, exists: bool = False
+    ) -> dict[str, Any]:
         return {"event_id": to_db_value(self.id), "type": EventType.TRADE.value}
 
     def _existing_row(self) -> dict[str, Any] | None:
@@ -1227,7 +1314,15 @@ class InvestmentSale(DomainModel):
         existing_comments = event.comments()
         for field_name, comment_type in SALE_COMMENT_TYPES.items():
             desired_value = getattr(self, field_name, None)
-            desired_text = None if desired_value is None else _metadata_text(desired_value._pk_value() if isinstance(desired_value, DomainModel) else desired_value)
+            desired_text = (
+                None
+                if desired_value is None
+                else _metadata_text(
+                    desired_value._pk_value()
+                    if isinstance(desired_value, DomainModel)
+                    else desired_value
+                )
+            )
             matches = _first_by_type(existing_comments, comment_type)
             primary = matches[0] if matches else None
             for extra in matches[1:]:
@@ -1237,7 +1332,14 @@ class InvestmentSale(DomainModel):
                     event.remove_comment(primary)
                 continue
             if primary is None:
-                event.comment(Comment(_session=self._session, content=desired_text, type=comment_type, created_at=utcnow()))
+                event.comment(
+                    Comment(
+                        _session=self._session,
+                        content=desired_text,
+                        type=comment_type,
+                        created_at=utcnow(),
+                    )
+                )
                 continue
             primary.content = desired_text
             primary.type = comment_type
@@ -1251,7 +1353,9 @@ class InvestmentSale(DomainModel):
             if primary_tag is not None:
                 event.remove_tags(primary_tag)
         elif primary_tag is None:
-            event.add_tags(Tag(_session=self._session, name=desired_term, category=SALE_TERM_TAG_CATEGORY))
+            event.add_tags(
+                Tag(_session=self._session, name=desired_term, category=SALE_TERM_TAG_CATEGORY)
+            )
         else:
             primary_tag.name = desired_term
             primary_tag.category = SALE_TERM_TAG_CATEGORY
@@ -1279,27 +1383,57 @@ class InvestmentSale(DomainModel):
 
 class Tag(DomainModel):
     """A label or category that can be applied to financial records for organization or reporting purposes."""
+
     id: UUID = Field(default_factory=uuid7, description="Unique tag identifier.")
     name: str = Field(description="Display name for the tag (e.g., 'cusip', 'etf', 'US').")
-    category: Optional[str] = Field(default=None, description="Tag category/namespace for grouping related tags (e.g., 'asset_identifier_type', 'country', 'fund_type').")
-    recorded: Optional[Report] = Field(default=None, description="Report that introduced or updated this tag.")
+    category: Optional[str] = Field(
+        default=None,
+        description="Tag category/namespace for grouping related tags (e.g., 'asset_identifier_type', 'country', 'fund_type').",
+    )
+    recorded: Optional[Report] = Field(
+        default=None, description="Report that introduced or updated this tag."
+    )
 
 
 class AssetTag(Tag):
-    category: Optional[AssetTagOptions | str] = Field(default=None, description="Canonical tag category for asset-level labels.")
+    category: Optional[AssetTagOptions | str] = Field(
+        default=None, description="Canonical tag category for asset-level labels."
+    )
 
 
 class Comment(DomainModel):
     """A user-provided note or annotation associated with a financial record."""
+
     id: UUID = Field(default_factory=uuid7, description="Unique comment identifier.")
-    created_at: datetime = Field(default_factory=utcnow, description="Timestamp when the comment was created.")
-    content: str = Field(description="The comment text content. For typed comments this holds the string-encoded value (e.g., a ticker symbol, an ISIN, or a free-form note).")
-    type: Optional[str] = Field(default=None, description="Type discriminator for programmatic use (e.g., 'nyse_ticker', 'asset_identifier', 'acquisition_date').")
-    recorded: Optional[Report] = Field(default=None, description="Report that introduced or updated this comment.")
+    created_at: datetime = Field(
+        default_factory=utcnow, description="Timestamp when the comment was created."
+    )
+    content: str = Field(
+        description="The comment text content. For typed comments this holds the string-encoded value (e.g., a ticker symbol, an ISIN, or a free-form note)."
+    )
+    type: Optional[str] = Field(
+        default=None,
+        description="Type discriminator for programmatic use (e.g., 'nyse_ticker', 'asset_identifier', 'acquisition_date').",
+    )
+    recorded: Optional[Report] = Field(
+        default=None, description="Report that introduced or updated this comment."
+    )
 
 
 # Resolve forward references for Pydantic.
-for _model in [Report, Asset, Investment, Account, Statement, Transfer, Location, Event, InvestmentSale, Tag, Comment]:
+for _model in [
+    Report,
+    Asset,
+    Investment,
+    Account,
+    Statement,
+    Transfer,
+    Location,
+    Event,
+    InvestmentSale,
+    Tag,
+    Comment,
+]:
     _model.model_rebuild()
 
 
