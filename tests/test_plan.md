@@ -12,28 +12,28 @@
 
 ## 2. What Is Covered Well
 
-### A. API Layer (`backend/omnifin/api/server.py`)
+### A. API Layer (`omnifin/api/server.py`)
 - Endpoints covered: `/api/health`, `/api/assets`, `/api/accounts`, `/api/statements`, `/api/transfers`, `/api/reports`.
 - Query validation covered:
   - `limit` lower bound and upper bound.
   - `offset` lower bound.
 - Pagination behavior covered with deterministic seeded data and strict assertions.
 
-### B. CLI Layer (`backend/omnifin/cli/main.py`)
+### B. CLI Layer (`omnifin/cli/main.py`)
 - Command success paths covered for:
   - `init-db`
   - `normalize` (plain output, JSON plan output, CSV output, save flow)
   - `tax` (US/DE JSON payload shape)
   - `serve` (uvicorn invocation arguments and DB env propagation via mocking)
 
-### C. Domain Layer (`backend/omnifin/models/domain.py`)
+### C. Domain Layer (`omnifin/models/domain.py`)
 - Identity map singleton behavior for natural keys and UUID keys.
 - `Report.plan()` and `Report.save()` on nested object graphs.
 - Lazy hydration from persisted rows.
 - Required field enforcement in plan and save paths.
 - Staged tag/comment relation plan counts and persistence.
 
-### D. Ingest Normalization (`backend/omnifin/ingest/normalize.py`)
+### D. Ingest Normalization (`omnifin/ingest/normalize.py`)
 - `parse_number`, `parse_date`, key/value discovery helpers.
 - Event/asset inference heuristics.
 - Fallback logic: amount -> quantity -> minimum safe transfer amount.

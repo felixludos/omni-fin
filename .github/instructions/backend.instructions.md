@@ -1,5 +1,5 @@
 ---
-applyTo: "backend/**/*.py"
+applyTo: "omnifin/**/*.py"
 ---
 # Omnifin Backend & CLI (fin) Coding Standards
 

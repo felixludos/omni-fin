@@ -14,7 +14,7 @@ from omnifin.models import Account, Asset, Tag
 
 
 # Resolve the seed data directory relative to the project root.
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # backend/tests -> project root
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]  # tests -> project root
 SEED_DATA_DIR = (_PROJECT_ROOT / "cloud_data" / "seed_data").resolve()
 
 # ── helpers ───────────────────────────────────────────────────────────────────

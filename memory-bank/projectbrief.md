@@ -4,7 +4,7 @@
 
 Omnifin is a dual-interface monorepo:
 
-1. Python backend package (`backend/omnifin`) with:
+1. Python backend package (`omnifin`) with:
 	 - Click CLI (`fin`)
 	 - FastAPI server (`/api/*` endpoints)
 	 - SQLite schema and session layer
@@ -19,7 +19,7 @@ Omnifin is a dual-interface monorepo:
 	- `Report.plan()` and `Report.save()` share the same graph traversal logic.
 	- normalization pipeline produces domain objects from unknown CSV shapes.
 - Test suite quality improved and currently passing:
-	- `30 passed` in `backend/tests`.
+	- `83 passed` in `tests`.
 	- deterministic API/CLI/domain/normalize coverage with stronger assertions.
 
 ## High-Impact Gaps

@@ -28,7 +28,7 @@
 
 ### Test baseline
 
-- 83 tests passing (`uv run pytest backend/tests -q --ignore=backend/tests/test_seeding.py`)
+- 83 tests passing (`uv run pytest tests -q --ignore=tests/test_seeding.py`)
 - 43 seeding tests fail (missing `cloud_data/seed_data/*.yaml` — gitignored local files)
 - Coverage: domain model, CLI commands, API endpoints, normalization
 - Not covered: tuning API, DB management endpoints, AI module, reconciliation
@@ -42,18 +42,18 @@ Every coding agent should work in small, verifiable increments. Each task should
 The default workflow should be:
 
 ```bash
-uv pip install -e backend
+uv pip install -e .
 npm install
 npm --prefix frontend install
 
-uv run pytest backend/tests -q
+uv run pytest tests -q
 npm run dev
 ```
 
 For backend-only tasks:
 
 ```bash
-uv run pytest backend/tests -q
+uv run pytest tests -q
 uv run fin --help
 ```
 
@@ -96,10 +96,10 @@ The user can clone/unzip the repo, install dependencies, run tests, start the ba
 Document:
 
 ```powershell
-uv pip install -e backend
+uv pip install -e .
 npm install
 npm --prefix frontend install
-uv run pytest backend/tests -q
+uv run pytest tests -q
 npm run dev
 ```
 
@@ -114,7 +114,7 @@ fin serve --db data/omnifin.db --reload
 **Automated checks**
 
 ```bash
-pytest backend/tests -q
+pytest tests -q
 ```
 
 **Manual verification**
@@ -157,7 +157,7 @@ The check command should confirm:
 ```bash
 python -c "import omnifin"
 uv run fin --help
-pytest backend/tests -q
+pytest tests -q
 npm --prefix frontend run build
 ```
 
@@ -189,7 +189,7 @@ The user can initialize a database, inspect tables, and trust that IDs, foreign 
 
 **Agent prompt**
 
-> Review `backend/omnifin/db/schema.sql` against the current Omnifin object model. Ensure SQLite STRICT mode is used, foreign keys are enabled, UUID primary keys are BLOB where appropriate, assets use `symbol` as the primary key, reports record import/edit sessions, and junction tables exist for tags, comments, entities, locations, events, and transfer matches. Fix naming inconsistencies and add useful indexes.
+> Review `omnifin/db/schema.sql` against the current Omnifin object model. Ensure SQLite STRICT mode is used, foreign keys are enabled, UUID primary keys are BLOB where appropriate, assets use `symbol` as the primary key, reports record import/edit sessions, and junction tables exist for tags, comments, entities, locations, events, and transfer matches. Fix naming inconsistencies and add useful indexes.
 
 **Implementation notes**
 
@@ -233,14 +233,14 @@ sqlite3 data/omnifin.db ".tables"
 
 **Agent prompt**
 
-> Add a simple migration system for SQLite. It does not need Alembic yet. Use a `schema_migrations` table and numbered SQL files under `backend/omnifin/db/migrations`. Add `fin migrate --db ...`.
+> Add a simple migration system for SQLite. It does not need Alembic yet. Use a `schema_migrations` table and numbered SQL files under `omnifin/db/migrations`. Add `fin migrate --db ...`.
 
 **Implementation notes**
 
 Suggested structure:
 
 ```text
-backend/omnifin/db/
+omnifin/db/
 ├── schema.sql
 └── migrations/
     ├── 0001_initial.sql
@@ -1568,7 +1568,7 @@ These are end-to-end checks the person monitoring coding agents should run perio
 uv pip install -e backend
 npm install
 npm --prefix frontend install
-uv run pytest backend/tests -q
+uv run pytest tests -q
 npm run dev
 ```
 
@@ -1672,7 +1672,7 @@ What can the user now do?
 Commands run:
 
 ```bash
-pytest backend/tests -q
+pytest tests -q
 npm --prefix frontend run build
 ````
 

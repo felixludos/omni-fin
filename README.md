@@ -15,22 +15,22 @@ repo implements the foundation discussed in the design conversation:
 ## Repository layout
 
 ```text
-omnifin_seed/
+fin/
 ├── package.json                    # root dev orchestration; npm run dev starts both servers
 ├── Makefile
-├── backend/
-│   ├── pyproject.toml              # installable omnifin package and fin CLI
-│   ├── omnifin/
-│   │   ├── api/server.py           # FastAPI app
-│   │   ├── ai/structured.py        # modular local-LLM structured-output wrapper
-│   │   ├── cli/main.py             # fin commands
-│   │   ├── core/                   # db session, ids, registry, errors
-│   │   ├── db/schema.sql           # SQLite STRICT schema
-│   │   ├── ingest/normalize.py     # generic CSV normalization milestone
-│   │   ├── models/domain.py        # high-level domain layer
-│   │   ├── reconcile/              # reconciliation scaffold
-│   │   └── tax/                    # US/DE tax engine scaffolds
-│   └── tests/test_domain.py
+├── pyproject.toml                  # installable omnifin package and fin CLI
+├── omnifin/
+│   ├── api/server.py               # FastAPI app
+│   ├── ai/structured.py            # modular local-LLM structured-output wrapper
+│   ├── cli/main.py                 # fin commands
+│   ├── core/                       # db session, ids, registry, errors
+│   ├── db/schema.sql               # SQLite STRICT schema
+│   ├── ingest/normalize.py         # generic CSV normalization milestone
+│   ├── models/domain.py            # high-level domain layer
+│   ├── reconcile/                  # reconciliation scaffold
+│   └── tax/                        # US/DE tax engine scaffolds
+├── tests/
+│   └── test_domain.py
 └── frontend/
     ├── package.json
     ├── vite.config.ts              # proxies /api to FastAPI
@@ -42,8 +42,8 @@ omnifin_seed/
 From the repo root:
 
 ```bash
-python -m pip install -e backend
-cd backend && python -m pytest
+python -m pip install -e .
+python -m pytest
 ```
 
 Then install frontend tooling and start the full stack:

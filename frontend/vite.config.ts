@@ -13,7 +13,6 @@ export default defineConfig({
     },
     watch: {
       ignored: [
-        '**/backend/**',     // Adjust this to match your FastAPI folder name if different
         '**/*.py',
         '**/__pycache__/**',
         '**/*.db',

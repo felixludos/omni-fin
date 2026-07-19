@@ -76,12 +76,12 @@ Current command result: `python -m pytest -q` -> `30 passed`.
 1. Implement lot model + US/DE tax correctness core, then add fixture-based tax tests.
 2. Add object-by-id API routes with strict error contracts and tests.
 3. Introduce migration framework/process (even lightweight) and migration smoke tests.
-4. Reconcile and update `docs/schemas.md` against `backend/omnifin/db/schema.sql`.
+4. Reconcile and update `docs/schemas.md` against `omnifin/db/schema.sql`.
 5. Add ingest performance benchmarks for representative broker exports.
 
 ## Guidance For Future AI Agents
 
-- Treat `backend/omnifin/db/schema.sql` and `backend/omnifin/core/registry.py` as the source of truth pair; changes should stay synchronized.
+- Treat `omnifin/db/schema.sql` and `omnifin/core/registry.py` as the source of truth pair; changes should stay synchronized.
 - Keep tests deterministic by using per-test DB files and clearing global identity maps.
 - Prefer exact behavior assertions over status-only checks.
 - Add tests in the same PR as any new endpoint/CLI/domain relation behavior.

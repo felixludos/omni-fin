@@ -10,8 +10,7 @@
 From repo root:
 
 ```bash
-python -m pip install -e backend
-cd backend
+python -m pip install -e .
 python -m pytest -q
 ```
 
@@ -47,4 +46,4 @@ fin serve --db data/omnifin.db --host 127.0.0.1 --port 8000 --reload
 ## Notes
 
 - Tax modules are scaffold implementations and currently return warning-first payloads.
-- Prefer running tests from `backend/` to use local package resolution.
+- Prefer running tests from the repo root to use installed package resolution.

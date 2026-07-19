@@ -6,9 +6,9 @@
 
 ## 2. Monorepo Structure & Routing
 This is a dual-interface application. Always respect the boundaries:
-- **`backend/`**: Contains the installable Python package (`omnifin`).
-  - **CLI:** Commands are built with `click` and routed through `backend/omnifin/cli.py`.
-  - **API:** The FastAPI server is located at `backend/omnifin/api/server.py`.
+- **`omnifin/`**: Contains the installable Python package.
+  - **CLI:** Commands are built with `click` and routed through `omnifin/cli/main.py`.
+  - **API:** The FastAPI server is located at `omnifin/api/server.py`.
   - **Data:** SQLite databases and Pydantic models.
 - **`frontend/`**: Contains the Vite + React/TypeScript web application.
 - **Root Level:** Configuration for monorepo orchestration (`package.json` with concurrently).
