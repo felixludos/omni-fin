@@ -1,6 +1,40 @@
 
 # Omnifin Implementation Roadmap for Coding Agents
 
+> **Last updated:** 2026-07-19 — Current state audit completed.
+
+## Current State Summary
+
+### What works today
+
+| Feature | CLI Command | API Endpoints | Status |
+|---------|-------------|---------------|--------|
+| Database init | `fin init-db` | `POST /api/db/create` | Working (no seed from CLI) |
+| CSV normalization | `fin normalize` | `POST /api/ingest/jobs` | Working, full pipeline |
+| Tax calculation | `fin tax` | — | Scaffold only (zeroed output) |
+| API server | `fin serve` | 42 endpoints | Working |
+| Browse DB | — | `GET /api/browse/{model}` | Working |
+| AI ingestion | — | `POST /api/ingest/jobs` | Working |
+| Investment parsing | — | `POST /api/invest-parse/jobs` | Working |
+| AI tuning | — | `POST /api/ingest/tuning/run` | Working |
+| Frontend | — | — | 3 views, no router, no tests |
+
+### What's scaffold-only (no real logic)
+
+- `tax/us.py` — returns zeroed TaxResult with warning
+- `tax/de.py` — returns zeroed TaxResult with warning
+- `reconcile/balance.py` — single-statement check only, untested
+- `ai/structured.py` — fully implemented but untested
+
+### Test baseline
+
+- 83 tests passing (`uv run pytest backend/tests -q --ignore=backend/tests/test_seeding.py`)
+- 43 seeding tests fail (missing `cloud_data/seed_data/*.yaml` — gitignored local files)
+- Coverage: domain model, CLI commands, API endpoints, normalization
+- Not covered: tuning API, DB management endpoints, AI module, reconciliation
+
+---
+
 ## Operating principles for every milestone
 
 Every coding agent should work in small, verifiable increments. Each task should end with tests, a manual demo path, and a short implementation note.
@@ -8,19 +42,19 @@ Every coding agent should work in small, verifiable increments. Each task should
 The default workflow should be:
 
 ```bash
-pip install -e .\backend
+uv pip install -e backend
 npm install
 npm --prefix frontend install
 
-pytest backend\tests -q
+uv run pytest backend/tests -q
 npm run dev
 ```
 
 For backend-only tasks:
 
 ```bash
-pytest backend\tests -q
-fin --help
+uv run pytest backend/tests -q
+uv run fin --help
 ```
 
 For frontend/API tasks:
@@ -62,17 +96,17 @@ The user can clone/unzip the repo, install dependencies, run tests, start the ba
 Document:
 
 ```powershell
-pip install -e .\backend
+uv pip install -e backend
 npm install
 npm --prefix frontend install
-pytest backend\tests -q
+uv run pytest backend/tests -q
 npm run dev
 ```
 
 Also document:
 
 ```powershell
-fin --help
+uv run fin --help
 fin init-db --db data/omnifin.db
 fin serve --db data/omnifin.db --reload
 ```
@@ -88,7 +122,7 @@ pytest backend/tests -q
 From a clean terminal:
 
 ```powershell
-fin --help
+uv run fin --help
 npm run dev
 ```
 
@@ -122,7 +156,7 @@ The check command should confirm:
 
 ```bash
 python -c "import omnifin"
-fin --help
+uv run fin --help
 pytest backend/tests -q
 npm --prefix frontend run build
 ```
@@ -1531,10 +1565,10 @@ These are end-to-end checks the person monitoring coding agents should run perio
 ## Scenario A — Fresh install
 
 ```bash
-pip install -e .\backend
+uv pip install -e backend
 npm install
 npm --prefix frontend install
-pytest backend\tests -q
+uv run pytest backend/tests -q
 npm run dev
 ```
 

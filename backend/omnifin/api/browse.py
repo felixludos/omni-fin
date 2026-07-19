@@ -196,7 +196,7 @@ def _build_high_row(conn: sqlite3.Connection, model: str, spec: dict, row: sqlit
     raw = dict(row)
     out: dict[str, Any] = {}
     pk = spec["pk"]
-    table = spec["table"]
+    spec["table"]
 
     high_fields = spec["high_fields"]
     high_columns = spec["high_columns"]
@@ -427,7 +427,7 @@ def browse_detail(model: str, id: str) -> dict[str, Any]:
             # Sender account
             sender_id = row["sender_account_id"]
             receiver_id = row["receiver_account_id"]
-            asset_sym = row["asset_symbol"]
+            row["asset_symbol"]
             if sender_id:
                 srow = conn.execute("SELECT account_id, name, type FROM accounts WHERE account_id = ?", (sender_id,)).fetchone()
                 if srow:

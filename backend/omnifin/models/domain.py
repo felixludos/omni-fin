@@ -17,10 +17,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Iterable, Literal, Optional, Self
+from typing import Any, Iterable, Literal, Optional
 from uuid import UUID
 import sqlite3
-import weakref
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
@@ -33,6 +32,7 @@ from omnifin.core.registry import (
     RELATION_SPECS,
     SQL_TO_MODEL_FIELDS,
 )
+from omnifin.models.categories import AssetTagOptions, AssetType, Country, EventType, FundEquityRatioType, FundType, SaleTerm
 
 DOMAIN_CLASSES: dict[str, type["DomainModel"]] = {}
 GLOBAL_IDENTITY_MAP: dict[type, dict[Any, "DomainModel"]] = defaultdict(dict)
@@ -723,8 +723,6 @@ class Report(Commentable):
         summary.relation_deletes = dict(relation_deletes)
         return summary
 
-
-from omnifin.models.categories import AssetTagOptions, AssetType, Country, EntityType, EventType, FundType, FundEquityRatioType, SaleTerm
 
 
 INVESTMENT_COMMENT_TYPES: dict[str, str] = {

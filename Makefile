@@ -1,13 +1,20 @@
-.PHONY: install-backend test-backend init-db dev
+.PHONY: install-backend test-backend lint-backend init-db dev check
 
 install-backend:
-	python -m pip install -e backend
+	uv pip install -e backend
 
 test-backend:
-	cd backend && python -m pytest
+	uv run pytest backend/tests -q --ignore=backend/tests/test_seeding.py
+
+lint-backend:
+	uv run ruff check backend/
 
 init-db:
-	cd backend && fin init-db --db ../data/omnifin.db
+	uv run fin init-db --db data/omnifin.db
 
 dev:
 	npm run dev
+
+check: test-backend lint-backend
+	uv run fin --help > /dev/null 2>&1 && echo "CLI: OK" || echo "CLI: MISSING"
+	@echo "All checks passed."

@@ -1,8 +1,9 @@
-# Omnifin Backend Test Plan (Updated 2026-06-29)
+# Omnifin Backend Test Plan (Updated 2026-07-19)
 
 ## 1. Current Test Suite Status
-- Command: `python -m pytest -q`
-- Result: `30 passed`
+- Command: `uv run pytest tests -q --ignore=tests/test_seeding.py`
+- Result: `83 passed`
+- Seeding tests (`test_seeding.py`): 43 tests — **all fail** because `cloud_data/seed_data/*.yaml` files are gitignored and not present on this checkout. These tests need either: (a) seed YAML files committed to the repo, or (b) `@pytest.mark.skipif` guards for missing files.
 - Scope covered:
   - API endpoint behavior and parameter validation.
   - CLI command behavior (`init-db`, `normalize`, `tax`, `serve`).

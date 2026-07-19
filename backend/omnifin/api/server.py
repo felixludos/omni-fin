@@ -248,7 +248,7 @@ def create_database(payload: CreateDbRequest) -> DbInfoResponse:
         db_path.unlink()  # overwrite requested — remove existing file
 
     try:
-        with DatabaseSession(db_path_str) as session:
+        with DatabaseSession(db_path_str):
             pass
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to create database: {exc}")

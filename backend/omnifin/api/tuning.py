@@ -194,7 +194,6 @@ async def _run_raw(
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    from omnifin.ai.structured import raw_completion as _raw
 
     return await asyncio.to_thread(fn)
 

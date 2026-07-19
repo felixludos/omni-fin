@@ -130,7 +130,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Apply the base schema (CREATE TABLE IF NOT EXISTS won't overwrite existing tables).
     try:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-    except sqlite3.OperationalError as exc:
+    except sqlite3.OperationalError:
         # executescript may fail if a statement references an unsupported feature;
         # swallow and continue -- migration logic below adds any missing columns.
         pass
@@ -201,7 +201,7 @@ def _apply_pending_migrations(conn: sqlite3.Connection) -> None:
     # Migration 1: Add 'type' column to events table if missing.
     if current_version < 1 and not _column_exists(conn, "events", "type"):
         conn.execute(
-            f"ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'unknown'"
+            "ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'unknown'"
         )
         conn.execute("INSERT OR REPLACE INTO schema_migrations(version) VALUES (1)")
 
