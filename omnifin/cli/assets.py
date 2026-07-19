@@ -397,15 +397,79 @@ _PARSED_FIELDS = [
 ]
 
 
+def _result_to_csv_row(
+    r: RowResult,
+    out_fields: list[str],
+    source_headers: list[str],
+    *,
+    parsed_only: bool = False,
+) -> dict[str, Any]:
+    """Convert a RowResult into a flat dict suitable for DictWriter."""
+    row: dict[str, Any] = {}
+    if not parsed_only:
+        for h in source_headers:
+            row[h] = r.source_row.get(h, "")
+    row["row_hash"] = r.row_hash
+    if r.parsed:
+        row["active"] = str(r.parsed.active)
+        if r.parsed.investment:
+            inv = r.parsed.investment
+            row["symbol"] = inv.symbol or ""
+            row["name"] = inv.name or ""
+            row["category"] = str(inv.category or "")
+            row["nyse_ticker"] = inv.nyse_ticker or ""
+            row["ibkr_ticker"] = inv.ibkr_ticker or ""
+            row["identifier"] = inv.identifier or ""
+            row["identifier_type"] = inv.identifier_type or ""
+            row["country"] = str(inv.country or "")
+            row["fund_type"] = str(inv.fund_type or "")
+            row["fund_focus"] = str(inv.fund_focus or "")
+            row["confidence"] = str(inv.confidence)
+            row["summary"] = r.parsed.summary
+        else:
+            row["confidence"] = str(r.parsed.confidence)
+            row["summary"] = r.parsed.summary
+    else:
+        row["active"] = "false"
+    return row
+
+
+class ProgressWriter:
+    """Writes the progress CSV row-by-row, flushing after each write for crash safety."""
+
+    def __init__(self, path: Path, source_headers: list[str], parsed_only: bool = False) -> None:
+        self._source_headers = source_headers
+        self._parsed_only = parsed_only
+        out_fields = list(source_headers) if not parsed_only else []
+        out_fields.extend(["row_hash"] + _PARSED_FIELDS)
+        self._out_fields = out_fields
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh = path.open("w", encoding="utf-8", newline="")
+        self._writer = csv.DictWriter(self._fh, fieldnames=out_fields, extrasaction="ignore")
+        self._writer.writeheader()
+        self._fh.flush()
+
+    def write_row(self, result: RowResult) -> None:
+        """Append one row and flush to disk immediately."""
+        row = _result_to_csv_row(
+            result, self._out_fields, self._source_headers, parsed_only=self._parsed_only
+        )
+        self._writer.writerow(row)
+        self._fh.flush()
+
+    def close(self) -> None:
+        self._fh.close()
+
+
 def _write_progress_csv(
     path: Path,
-    headers: list[str],
+    source_headers: list[str],
     results: list[RowResult],
     *,
     parsed_only: bool = False,
 ) -> None:
-    """Write the progress CSV: original columns (optional) + parsed fields + row_hash."""
-    out_fields = list(headers) if not parsed_only else []
+    """Bulk-write the progress CSV (used as a fallback; prefer ProgressWriter)."""
+    out_fields = list(source_headers) if not parsed_only else []
     out_fields.extend(["row_hash"] + _PARSED_FIELDS)
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -413,33 +477,9 @@ def _write_progress_csv(
         writer = csv.DictWriter(fh, fieldnames=out_fields, extrasaction="ignore")
         writer.writeheader()
         for r in results:
-            row: dict[str, Any] = {}
-            if not parsed_only:
-                for h in headers:
-                    row[h] = r.source_row.get(h, "")
-            row["row_hash"] = r.row_hash
-            if r.parsed:
-                row["active"] = str(r.parsed.active)
-                if r.parsed.investment:
-                    inv = r.parsed.investment
-                    row["symbol"] = inv.symbol or ""
-                    row["name"] = inv.name or ""
-                    row["category"] = inv.category or ""
-                    row["nyse_ticker"] = inv.nyse_ticker or ""
-                    row["ibkr_ticker"] = inv.ibkr_ticker or ""
-                    row["identifier"] = inv.identifier or ""
-                    row["identifier_type"] = inv.identifier_type or ""
-                    row["country"] = inv.country or ""
-                    row["fund_type"] = inv.fund_type or ""
-                    row["fund_focus"] = inv.fund_focus or ""
-                    row["confidence"] = str(inv.confidence)
-                    row["summary"] = r.parsed.summary
-                else:
-                    row["confidence"] = str(r.parsed.confidence)
-                    row["summary"] = r.parsed.summary
-            else:
-                row["active"] = "false"
-            writer.writerow(row)
+            writer.writerow(
+                _result_to_csv_row(r, out_fields, source_headers, parsed_only=parsed_only)
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -710,27 +750,53 @@ def assets_command(
             f"[dim]{skipped} rows loaded from partial, {len(to_process)} to process[/dim]"
         )
 
+    # 4. Set up progress writer (opens file, writes header, flushes partial rows)
+    progress_writer: ProgressWriter | None = None
+    if progress_csv:
+        progress_writer = ProgressWriter(Path(progress_csv), headers, parsed_only)
+        for r in results:
+            if r.from_partial:
+                progress_writer.write_row(r)
+
     if not to_process:
         console.print("[bold green]All rows already processed (from partial).[/bold green]")
     else:
-        # 4. Create provider
+        # 5. Create provider
         provider = LLMProvider.from_url(provider_url, model=model)
         console.print(
             f"[dim]Provider: {provider_url} | Model: {model} | Temperature: {temperature}[/dim]"
         )
 
-        # 5. Process rows
+        # 6. Process rows
         if interactive:
             _run_interactive(
-                console, results, to_process, provider, model, existing_symbols, temperature
+                console,
+                results,
+                to_process,
+                provider,
+                model,
+                existing_symbols,
+                temperature,
+                progress_writer=progress_writer,
             )
         else:
-            _run_batch(console, results, to_process, provider, model, existing_symbols, temperature)
+            _run_batch(
+                console,
+                results,
+                to_process,
+                provider,
+                model,
+                existing_symbols,
+                temperature,
+                progress_writer=progress_writer,
+            )
 
-    # 6. Output results
-    if progress_csv:
-        _write_progress_csv(Path(progress_csv), headers, results, parsed_only=parsed_only)
+    # 7. Finalize
+    if progress_writer:
+        progress_writer.close()
         console.print(f"[bold green]Wrote progress to {progress_csv}[/bold green]")
+    elif not to_process:
+        pass  # nothing to do — all from partial, no progress flag
     else:
         _report_and_save(console, results, db_path, input_csv, yes)
 
@@ -743,6 +809,7 @@ def _run_interactive(
     model: str,
     existing_symbols: list[str],
     temperature: float,
+    progress_writer: ProgressWriter | None = None,
 ) -> None:
     """Process rows one by one with streaming and user review."""
     total = len(to_process)
@@ -764,6 +831,9 @@ def _run_interactive(
             if sym not in existing_symbols:
                 existing_symbols.append(sym)
 
+        if progress_writer:
+            progress_writer.write_row(r)
+
 
 def _run_batch(
     console: Console,
@@ -773,6 +843,7 @@ def _run_batch(
     model: str,
     existing_symbols: list[str],
     temperature: float,
+    progress_writer: ProgressWriter | None = None,
 ) -> None:
     """Process rows in batch with a progress bar."""
     from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -812,6 +883,9 @@ def _run_batch(
                     confidence=0.0,
                     active=False,
                 )
+
+            if progress_writer:
+                progress_writer.write_row(r)
 
             progress.advance(task)
 
