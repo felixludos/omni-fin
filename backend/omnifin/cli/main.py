@@ -10,14 +10,21 @@ from omnifin.core.db import DatabaseSession, init_db
 from omnifin.ingest.normalize import normalize_csv_file, write_normalized_csv
 from omnifin.models import Report
 
+from omnifin.cli.assets import assets_command
+
 
 @click.group()
 def cli() -> None:
     """Omnifin command line tools."""
 
 
+cli.add_command(assets_command)
+
+
 @cli.command("init-db")
-@click.option("--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path.")
+@click.option(
+    "--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path."
+)
 def init_db_command(db_path: str) -> None:
     """Create or migrate the SQLite schema."""
 
@@ -28,13 +35,24 @@ def init_db_command(db_path: str) -> None:
 
 @cli.command("normalize")
 @click.argument("input_csv", type=click.Path(exists=True, dir_okay=False))
-@click.option("--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path.")
-@click.option("--output", "output_csv", type=click.Path(dir_okay=False), help="Optional normalized CSV output path.")
+@click.option(
+    "--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path."
+)
+@click.option(
+    "--output",
+    "output_csv",
+    type=click.Path(dir_okay=False),
+    help="Optional normalized CSV output path.",
+)
 @click.option("--account-name", default="Imported Account", show_default=True)
 @click.option("--account-type", default="internal", show_default=True)
 @click.option("--source-name", default=None, help="Human-readable source/report name.")
-@click.option("--save/--no-save", default=False, show_default=True, help="Persist parsed objects to SQLite.")
-@click.option("--json-plan/--no-json-plan", default=False, show_default=True, help="Print plan as JSON.")
+@click.option(
+    "--save/--no-save", default=False, show_default=True, help="Persist parsed objects to SQLite."
+)
+@click.option(
+    "--json-plan/--no-json-plan", default=False, show_default=True, help="Print plan as JSON."
+)
 def normalize_command(
     input_csv: str,
     db_path: str,
@@ -65,7 +83,13 @@ def normalize_command(
         for obj in result.objects:
             obj._session = session
 
-        report = Report(_session=session, id=result.report.id, date=result.report.date, name=result.report.name, raw_hash=result.report.raw_hash)
+        report = Report(
+            _session=session,
+            id=result.report.id,
+            date=result.report.date,
+            name=result.report.name,
+            raw_hash=result.report.raw_hash,
+        )
         plan = report.plan(*result.objects)
         if json_plan:
             click.echo(plan.model_dump_json(indent=2))
@@ -83,7 +107,9 @@ def normalize_command(
 
 
 @cli.command("tax")
-@click.option("--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path.")
+@click.option(
+    "--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path."
+)
 @click.option("--jurisdiction", type=click.Choice(["US", "DE"]), required=True)
 @click.option("--year", "tax_year", type=int, required=True)
 def tax_command(db_path: str, jurisdiction: str, tax_year: int) -> None:
@@ -104,7 +130,9 @@ def tax_command(db_path: str, jurisdiction: str, tax_year: int) -> None:
 
 
 @cli.command("serve")
-@click.option("--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path.")
+@click.option(
+    "--db", "db_path", default="omnifin.db", show_default=True, help="SQLite database path."
+)
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8100, show_default=True)
 @click.option("--reload/--no-reload", default=True, show_default=True)
